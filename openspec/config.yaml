@@ -1,8 +1,10 @@
 schema: spec-driven
 context: |
-  DEVxSD GameJam is a minimal Flutter web app using the Flame engine.
-  The entire landing screen is a game canvas showing only "DEVxSD GameJam!".
-  No gameplay, menus, buttons, or additional visible content is in scope.
-  Cloudflare Workers serves build/web as static assets using Wrangler.
-  npm run build builds the Flutter web app; npx wrangler deploy deploys it.
+  DEVxSD GameJam uses Flutter and Flame for Chandelier, a mobile upward cylindrical puzzle.
+  Board is 18 wrapping columns by 42 rows. Timed mode targets 30 rings for early playtesting;
+  Unlimited ranks plant height. Blocks float up, rings grow a central Monstera, pothos descend.
+  Touch drag rotates the cylinder; taps/buttons rotate pieces; hold accelerates, swipe up locks.
+  OpenSpec specs define shipped behavior; plan/ tracks art direction, defaults and remaining work.
+  Cloudflare Workers serves build/web and a Durable Object leaderboard API.
+  npm run build builds the web app; npx wrangler deploy deploys it only when requested.
   Future behavior changes begin with an OpenSpec proposal and scenarios.
