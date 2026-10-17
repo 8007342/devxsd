@@ -1,0 +1,8 @@
+schema: spec-driven
+context: |
+  DEVxSD GameJam is a minimal Flutter web app using the Flame engine.
+  The entire landing screen is a game canvas showing only "DEVxSD GameJam!".
+  No gameplay, menus, buttons, or additional visible content is in scope.
+  Cloudflare Workers serves build/web as static assets using Wrangler.
+  npm run build builds the Flutter web app; npx wrangler deploy deploys it.
+  Future behavior changes begin with an OpenSpec proposal and scenarios.

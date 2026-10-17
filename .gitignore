@@ -1,0 +1,22 @@
+# Dart and Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.iml
+.idea/
+# JavaScript tooling and local build SDK
+node_modules/
+.cache/
+.wrangler/
+.dev.vars
+.env
+.env.*
+# Forge session context
+.forge-startup-context.md
+# Editor and OS state
+.DS_Store
