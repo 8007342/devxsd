@@ -134,7 +134,7 @@ class ChandelierGame extends FlameGame {
     var high = double.negativeInfinity;
     for (var sample = 0; sample < 90; sample++) {
       for (final row in [-1.0, 42.0]) {
-        final y = _rawProject(sample / 5, row, radius: 1.06).dy;
+        final y = _rawProject(sample / 5, row, radius: 1.09).dy;
         low = math.min(low, y);
         high = math.max(high, y);
       }
@@ -151,7 +151,7 @@ class ChandelierGame extends FlameGame {
     var bounds = Rect.fromCenter(center: _project(0, 0), width: 0, height: 0);
     for (var sample = 0; sample < 360; sample++) {
       for (final row in [-.8, 41.8]) {
-        final point = _project(sample / 20, row, radius: 1.045);
+        final point = _project(sample / 20, row, radius: 1.08);
         bounds = bounds.expandToInclude(
           Rect.fromLTWH(point.dx, point.dy, 0, 0),
         );
@@ -299,31 +299,6 @@ class ChandelierGame extends FlameGame {
         if (value > 0) {
           final color = _colors[(value - 1) % 7];
           _brick(canvas, column.toDouble(), row.toDouble(), color, brightness);
-
-          canvas.drawPath(
-            path,
-            Paint()
-              ..color = const Color(0xFF071d21)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = front ? 1.5 : 1,
-          );
-          final a = _project(
-            column - .35,
-            row - .31,
-            centerRow: row.toDouble(),
-          );
-          final b = _project(
-            column + .29,
-            row - .31,
-            centerRow: row.toDouble(),
-          );
-          canvas.drawLine(
-            a,
-            b,
-            Paint()
-              ..color = _cream.withValues(alpha: front ? .45 : .12)
-              ..strokeWidth = front ? 2 : 1,
-          );
         } else {
           canvas.drawPath(
             path,
@@ -345,39 +320,32 @@ class ChandelierGame extends FlameGame {
           (active
               ? model.angle + model.collisionBounce - model.activeCenterColumn
               : 0);
-      final path = _cell(visualColumn, visualRow, .035);
+      // Paint the glow first; the opaque raised brick covers its entire interior.
+      final path = _cell(visualColumn, visualRow, active ? -.015 : .035);
+      if (!active) {
+        canvas.drawPath(path, Paint()..color = color.withValues(alpha: .11));
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color.withValues(alpha: active ? .20 : .13)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = active ? 5 : 7,
+      );
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color.withValues(alpha: active ? .85 : .88)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = active ? 1.2 : 1.6,
+      );
       if (active) {
         _brick(
           canvas,
           visualColumn,
           visualRow,
           _colors[(model.activeType - 1) % 7],
-          .85,
-        );
-      }
-      canvas.drawPath(
-        path,
-        Paint()..color = color.withValues(alpha: active ? .24 : .11),
-      );
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = color.withValues(alpha: .13)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 7,
-      );
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = color.withValues(alpha: active ? 1 : .88)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = active ? 2.1 : 1.6,
-      );
-      if (active) {
-        final center = _project(visualColumn, visualRow);
-        canvas.drawRect(
-          Rect.fromCenter(center: center, width: 3, height: 3),
-          Paint()..color = color,
+          .96,
         );
       }
     }
@@ -715,54 +683,49 @@ class ChandelierGame extends FlameGame {
     double light,
   ) {
     final theta = column * math.pi * 2 / 18 - _yaw;
-    final left = column - .43;
-    final right = column + .43;
-    final top = row - .43;
-    final bottom = row + .43;
-    final outer = [
-      _project(left, top, radius: 1.045, centerRow: row),
-      _project(right, top, radius: 1.045, centerRow: row),
-      _project(right, bottom, radius: 1.045, centerRow: row),
-      _project(left, bottom, radius: 1.045, centerRow: row),
+    final front = math.cos(theta) >= 0;
+    final radialSign = front ? 1.0 : -1.0;
+    final faceRadius = front ? 1.08 : .92;
+    List<Offset> corners(double radius) => [
+      _project(column - .43, row - .43, radius: radius, centerRow: row),
+      _project(column + .43, row - .43, radius: radius, centerRow: row),
+      _project(column + .43, row + .43, radius: radius, centerRow: row),
+      _project(column - .43, row + .43, radius: radius, centerRow: row),
     ];
-    final inner = [
-      _project(left, top, radius: .985, centerRow: row),
-      _project(right, top, radius: .985, centerRow: row),
-      _project(right, bottom, radius: .985, centerRow: row),
-      _project(left, bottom, radius: .985, centerRow: row),
-    ];
-    final body = Color.lerp(const Color(0xFF0b282b), color, light)!;
-    canvas.drawPath(
-      Path()..addPolygon([inner[0], inner[1], outer[1], outer[0]], true),
-      Paint()..color = Color.lerp(body, _cream, .28)!,
-    );
-    final side = math.sin(theta) > 0 ? 0 : 1;
-    final lower = side == 1 ? 2 : 3;
-    canvas.drawPath(
-      Path()..addPolygon([
-        inner[side],
-        inner[lower],
-        outer[lower],
-        outer[side],
-      ], true),
-      Paint()..color = Color.lerp(body, const Color(0xFF071d21), .4)!,
-    );
-    final face = math.cos(theta) >= 0 ? outer : inner;
-    canvas.drawPath(Path()..addPolygon(face, true), Paint()..color = body);
-    canvas.drawPath(
-      Path()..addPolygon(face, true),
-      Paint()
-        ..color = const Color(0xFF102b2e)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = .85,
-    );
-    canvas.drawLine(
-      face[0],
-      face[1],
-      Paint()
-        ..color = _cream.withValues(alpha: light * .60)
-        ..strokeWidth = 1.2,
-    );
+    final back = corners(1);
+    final face = corners(faceRadius);
+    // World coordinates: x=R sin(theta), y grows down, z=R cos(theta).
+    // All surfaces use outward normals and the same upper-left/front light.
+    Color surface(double nx, double ny, double nz) {
+      const lightLength = 1.3285330255586423;
+      final lambert = math.max(0.0, (-.45 * nx - ny + .75 * nz) / lightLength);
+      final intensity = (.48 + .52 * lambert) * light;
+      return Color.lerp(
+        const Color(0xFF0b282b),
+        color,
+        intensity.clamp(0.0, 1.0),
+      )!;
+    }
+
+    void polygon(List<Offset> points, Color fill) {
+      canvas.drawPath(Path()..addPolygon(points, true), Paint()..color = fill);
+    }
+
+    // Top plane has outward normal (0,-1,0), visible from above.
+    polygon([back[0], back[1], face[1], face[0]], surface(0, -1, 0));
+    // The left tangent face points toward the viewer on the cylinder's right
+    // half, and vice versa. Selection uses the positive z dot view directly.
+    final sine = math.sin(theta);
+    final cosine = math.cos(theta);
+    final leftNormalZ = sine;
+    if (leftNormalZ > 0) {
+      polygon([back[0], face[0], face[3], back[3]], surface(-cosine, 0, sine));
+    } else if (leftNormalZ < 0) {
+      polygon([face[1], back[1], back[2], face[2]], surface(cosine, 0, -sine));
+    }
+    // Near-side outer radius faces outward; far-side inner radius faces inward.
+    // Paint the continuously filled radial face last to occlude hidden planes.
+    polygon(face, surface(radialSign * sine, 0, radialSign * cosine));
   }
 
   void _ringBurst(Canvas canvas) {

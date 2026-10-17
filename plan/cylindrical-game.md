@@ -134,3 +134,25 @@ to origin as explicitly requested by the user.
 Grounded-pot and slow-camera changes are implemented and verified: analysis,
 28 Flutter tests, 3 Worker tests, release build and strict specs pass. The visible
 Chromium preview is hot-reloaded. Publication to main/origin follows this check.
+
+## Solid brick readability follow-up
+
+The player still read the shaded blocks as hollow after the face-normal fix.
+Use an opaque filled face with broad outward top/left highlights and darker
+bottom/right bevels. Move active halo behind the silhouette and remove its face
+wash/center square. Verify front, side and rear views before completing task 2.3.
+Remote push also requires quoting scaffolded OpenSpec dates for the receiver's
+Ruby YAML validator; this does not change their date values.
+
+Further feedback identifies inverted face normals: use true radial extrusion
+from the cylinder surface and normal-based face lighting, with no inset bevel
+frame. This supersedes the temporary screen-space bevel approach.
+
+Root cause found during full-pass review: _drawHalf repainted a dark inset cell
+rectangle and a fixed highlight after the solid brick renderer. Remove both
+overlays. Use brighter top-plane lighting from the above/front light; renderer
+geometry now uses viewer-facing outward radial normals and filled faces.
+
+Final outward-normal renderer and removal of the occupied-cell overlay are
+hot-reloaded and verified in Chromium. Analysis, 28 Flutter tests, release build
+and strict specs pass. Both scaffold dates are now quoted YAML strings.

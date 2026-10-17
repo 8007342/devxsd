@@ -174,10 +174,10 @@ one column; Right turns it left. Touch dragging continues to follow the finger.
 
 Crown and base use matching shallow plane profiles. Apply vertical perspective
 to each brick around its own row center, not to the whole row displacement; the
-old transform exaggerated the lower ellipse. Choose the tangent side facing the
-viewer (left edge on the right half), outer radial face at the front, inward
-radial face at the rear. Top/side connectors sit behind the visible radial face,
-with a lit top edge to read as solid volume. Both rims remain procedural paths.
+old transform exaggerated the lower ellipse. Use the outer projected face at the front and inward face at the rear. A shallow
+down/right backplate, opaque colored center, broad lit top/left bevels and dark
+bottom/right bevels deliberately fake clearly raised solid volume. Paint the
+active halo behind the face, with no pale face wash or center square. Both rims remain procedural paths.
 
 ## Grounded pot and living camera
 
@@ -185,3 +185,11 @@ The pot base follows the cylinder center axis about one row above the bottom rim
 A 52-second roll cycle stays within roughly 0.7 degrees of its resting angle;
 67-second shallow pitch and 73-second lateral drift add slower variation. Motion
 is subtle and bounded, and fitting continues to protect HUD and controls.
+
+## Outward radial box normals
+
+The player still read screen-space bevels as inverted. Replace the UI-style bevel
+with actual projected radial extrusion from the cylinder surface. Front boxes
+face outward and rear boxes face inward toward the viewer. Choose the visible
+tangent face from its outward normal and light every face from one upper-left,
+above/front source. Preserve filled faces and external active halos.

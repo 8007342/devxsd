@@ -114,7 +114,7 @@ The crown and base SHALL share a coherent shallow plane projection. The base SHA
 - **THEN** crown and base retain matching shallow projected profiles and remain connected to their corresponding grid rows
 
 ### Requirement: Solid brick face orientation
-Bricks SHALL appear solid with visible side faces facing the viewer. Front-layer bricks SHALL show their outer radial face; rear-layer bricks SHALL show their inward face. Edge shading SHALL reinforce raised volume rather than a hollow recess.
+Bricks SHALL appear solid with visible side faces facing the viewer. Front-layer bricks SHALL show their outer radial face; rear-layer bricks SHALL show their inward face. Faces SHALL remain continuously filled, with outward extrusion and face lighting consistent with one light source, reading as solid boxes. Active halos SHALL sit outside the solid silhouette without washing its face into a hollow frame.
 
 #### Scenario: Turn bricks across the front and rear
 - **WHEN** settled or active bricks rotate around either side of the cylinder
