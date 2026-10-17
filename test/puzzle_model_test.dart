@@ -246,4 +246,127 @@ void main() {
       }
     },
   );
+  test(
+    'gentle release snaps immediately and exactly while ascent continues',
+    () {
+      final model = PuzzleModel();
+      model.debugSetActive(type: 3, column: 0, row: 30);
+      model.beginDrag();
+      model.dragColumns(0.24);
+      model.releaseSpin(1.5);
+      expect(model.spinVelocity, 0);
+      model.update(0.12);
+      expect(model.angle, 1);
+      expect(model.riseProgress, closeTo(0.12, 1e-9));
+    },
+  );
+  test(
+    'fast flicks settle exactly within half a second in either direction',
+    () {
+      for (final velocity in [-40.0, -12.0, 12.0, 40.0]) {
+        final model = PuzzleModel();
+        model.debugSetActive(type: 3, column: 0, row: 30);
+        model.beginDrag();
+        model.dragColumns(0.23);
+        final releasedAt = model.angle;
+        model.releaseSpin(velocity);
+        model.update(0.45);
+        expect(model.spinVelocity, 0);
+        expect(model.angle, model.angle.roundToDouble());
+        expect((model.angle - releasedAt).sign, velocity.sign);
+        expect(model.riseProgress, closeTo(0.45, 1e-9));
+      }
+    },
+  );
+  test('a new drag interrupts both coast and final snapping', () {
+    final model = PuzzleModel();
+    model.debugSetActive(type: 3, column: 0, row: 30);
+    model.releaseSpin(20);
+    model.update(0.1);
+    model.beginDrag();
+    final held = model.angle;
+    model.update(0.2);
+    expect(model.angle, held);
+    model.dragColumns(0.2);
+    model.releaseSpin(0);
+    model.update(0.01);
+    model.beginDrag();
+    final snappingInterrupted = model.angle;
+    model.update(0.2);
+    expect(model.angle, snappingInterrupted);
+  });
+  test('flick into obstacle snaps to legal side without tunnelling', () {
+    final model = PuzzleModel();
+    model.debugSetActive(type: 2, column: 0, row: 20);
+    model.board[20][4] = 7;
+    model.releaseSpin(40);
+    model.update(0.45);
+    expect(model.spinVelocity, 0);
+    expect(model.angle, model.angle.roundToDouble());
+    expect(model.angle, lessThanOrEqualTo(2));
+    expect(
+      model.activeCells.every(
+        (cell) => model.board[cell.row][cell.column] == 0,
+      ),
+      isTrue,
+    );
+    final stopped = model.angle;
+    model.beginDrag();
+    model.dragColumns(-2);
+    expect(model.angle, stopped - 2);
+  });
+  test('settled ages follow survivors through compaction and reset', () {
+    final model = PuzzleModel();
+    model.debugSetActive(type: 2, column: 0, row: 20);
+    model.hardDrop();
+    expect(model.settledAge(1, 0), 0);
+    model.update(2);
+    expect(model.settledAge(1, 0), closeTo(2, 1e-9));
+    expect(model.settledAge(5, 0), 0);
+    for (var column = 2; column < 18; column++) {
+      model.board[0][column] = 7;
+    }
+    model.debugSetActive(type: 1, column: 4, row: 20);
+    model.hardDrop();
+    expect(model.rings, 1);
+    expect(model.board[0][0], 2);
+    expect(model.settledAge(0, 0), closeTo(2, 1e-9));
+    expect(model.board[0][4], 1);
+    expect(model.settledAge(0, 4), 0);
+    expect(model.settledAge(1, 0), 0);
+    model.update(0.25);
+    expect(model.settledAge(0, 0), closeTo(2.25, 1e-9));
+    expect(model.settledAge(0, 4), closeTo(0.25, 1e-9));
+    model.reset();
+    expect(model.settledAge(0, 0), 0);
+    expect(model.settledAge(0, 4), 0);
+  });
+  test('direct column input interrupts a stale snap target', () {
+    final model = PuzzleModel();
+    model.debugSetActive(type: 3, column: 0, row: 30);
+    model.dragColumns(0.3);
+    model.releaseSpin(0);
+    model.update(0.01);
+    model.dragColumns(1);
+    model.releaseSpin(0);
+    model.update(0.12);
+    expect(model.angle, 2);
+    expect(model.spinVelocity, 0);
+  });
+  test(
+    'settled fixture ages can predate the run and clearing removes them',
+    () {
+      final model = PuzzleModel();
+      model.debugSetSettled(row: 0, column: 17, type: 3, age: 25);
+      expect(model.elapsed, 0);
+      expect(model.settledAge(0, -1), 25);
+      model.update(0.25);
+      expect(model.settledAge(0, 17), closeTo(25.25, 1e-9));
+      model.debugSetSettled(row: 0, column: 17, type: 0);
+      expect(model.settledAge(0, 17), 0);
+      model.board[0][17] =
+          5; // Unstamped fixture cells do not inherit removed ages.
+      expect(model.settledAge(0, 17), 0);
+    },
+  );
 }

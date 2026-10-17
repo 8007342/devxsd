@@ -5,6 +5,8 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import 'puzzle_model.dart';
+import 'garden_ecology.dart';
+import 'camera_rig.dart';
 
 /// A perspective view of the rules grid. Drawing never participates in collision.
 class ChandelierGame extends FlameGame {
@@ -12,8 +14,7 @@ class ChandelierGame extends FlameGame {
 
   final PuzzleModel model;
   double _clock = 0;
-  double _cameraRow = 20.5;
-  double _visibleRows = 46;
+  final CameraRig _camera = CameraRig();
   double _burst = 1;
   int _seenClear = 0;
   List<int> _burstRows = [];
@@ -50,8 +51,7 @@ class ChandelierGame extends FlameGame {
   }
 
   void resetView() {
-    _cameraRow = 20.5;
-    _visibleRows = 46;
+    _camera.reset(activeRow: _activeRow, pieceSerial: model.pieceSerial);
     _burst = 1;
     _seenClear = model.clearSerial;
     _burstRows = [];
@@ -73,20 +73,37 @@ class ChandelierGame extends FlameGame {
       _burstColumn = model.angle;
       _burst = 0;
     }
-    final targetRows = 46.0 + 2 * (model.stackDepth / 42).clamp(0.0, 1.0);
-    _visibleRows += (targetRows - _visibleRows) * math.min(1, frame * 2.3);
+    _camera.update(
+      activeRow: _activeRow,
+      pieceSerial: model.pieceSerial,
+      dt: dt,
+    );
   }
 
-  double get _width => math.min(size.x * .84, size.y * .62);
-  double get _unit => size.y * .70 / _visibleRows;
-  double get _centerY => size.y * .48;
+  double get _activeRow =>
+      model.activeCells.fold<double>(0, (sum, cell) => sum + cell.row) /
+          model.activeCells.length -
+      model.riseProgress;
+  double get cameraFocusRow => _camera.focusRow;
+  double get _radius => 18 / (2 * math.pi);
+  double get _eyeRow => _camera.focusRow + 2;
+  double get _eyeZ => _radius + 3;
+  double get _pitch => 50 * math.pi / 180;
+  double get _focalY => size.y * .61;
+  double get _focalX => size.y * .66 / 1.62;
+  double get _unit => _focalX / 11;
   double get _yaw => (model.angle + model.collisionBounce) * math.pi * 2 / 18;
   double get _cameraInclination =>
-      -.055 + math.sin(_clock * math.pi * 2 / 52) * .012;
-  double get _depthPitch => .045 + math.sin(_clock * math.pi * 2 / 67) * .006;
+      -.12 + math.sin(_clock * math.pi * 2 / 52) * .012;
   double get _parallax =>
-      math.sin(_yaw * .4) * size.x * .025 +
-      math.sin(_clock * math.pi * 2 / 73) * size.x * .008;
+      math.sin(_yaw * .4) * size.x * .012 +
+      math.sin(_clock * math.pi * 2 / 73) * size.x * .005;
+
+  double _viewDepth(double column, double row, {double radius = 1}) {
+    final theta = column * math.pi * 2 / 18 - _yaw;
+    final dz = _radius * radius * math.cos(theta) - _eyeZ;
+    return -math.sin(_pitch) * (row - _eyeRow) - math.cos(_pitch) * dz;
+  }
 
   Offset _rawProject(
     double column,
@@ -95,21 +112,22 @@ class ChandelierGame extends FlameGame {
     double? centerRow,
   }) {
     final theta = column * math.pi * 2 / 18 - _yaw;
-    final depth = math.cos(theta) * radius;
-    final perspective = 1 / (1.38 - depth * .38);
-    final x = math.sin(theta) * _width * .41 * radius * perspective;
-    final rowCenter = centerRow ?? row;
-    final y =
-        (rowCenter - _cameraRow) * _unit +
-        (row - rowCenter) * _unit * perspective +
-        depth * _width * _depthPitch;
-    final inclination = _cameraInclination;
+    final x = _radius * radius * math.sin(theta);
+    final dy = row - _eyeRow;
+    final dz = _radius * radius * math.cos(theta) - _eyeZ;
+    final depth = math.max(.75, -math.sin(_pitch) * dy - math.cos(_pitch) * dz);
+    final screenX = _focalX * x / depth;
+    final screenY =
+        _focalY * (math.cos(_pitch) * dy - math.sin(_pitch) * dz) / depth;
+    final roll = _cameraInclination * .3;
     return Offset(
       size.x / 2 +
           _parallax +
-          x * math.cos(inclination) -
-          y * math.sin(inclination),
-      _centerY + x * math.sin(inclination) + y * math.cos(inclination),
+          screenX * math.cos(roll) -
+          screenY * math.sin(roll),
+      math.max(size.y * .61, 128 + size.y * .452) +
+          screenX * math.sin(roll) +
+          screenY * math.cos(roll),
     );
   }
 
@@ -125,24 +143,89 @@ class ChandelierGame extends FlameGame {
       radius: radius,
       centerRow: centerRow,
     );
-    return Offset(point.dx, point.dy * _verticalFit + _verticalOffset);
+    return Offset(
+      size.x / 2 + (point.dx - size.x / 2) * _verticalFit,
+      point.dy * _verticalFit + _verticalOffset,
+    );
   }
 
   void _fitProjection() {
-    if (size.y <= 0) return;
-    var low = double.infinity;
-    var high = double.negativeInfinity;
-    for (var sample = 0; sample < 90; sample++) {
-      for (final row in [-1.0, 42.0]) {
-        final y = _rawProject(sample / 5, row, radius: 1.09).dy;
-        low = math.min(low, y);
-        high = math.max(high, y);
+    if (size.x <= 0 || size.y <= 0) return;
+    final offset =
+        model.angle + model.collisionBounce - model.activeCenterColumn;
+    var left = double.infinity;
+    var right = double.negativeInfinity;
+    var bottom = double.negativeInfinity;
+    for (final cell in model.activeCells) {
+      for (final dx in [-.43, .43]) {
+        for (final dy in [-.43, .43]) {
+          final point = _rawProject(
+            cell.column + offset + dx,
+            cell.row - model.riseProgress + dy,
+            radius: 1.08,
+          );
+          left = math.min(left, point.dx);
+          right = math.max(right, point.dx);
+          bottom = math.max(bottom, point.dy);
+        }
       }
     }
-    final top = math.max(size.y * .14, 128.0);
-    final bottom = size.y * .815;
-    _verticalFit = math.min(1, (bottom - top) / (high - low));
-    _verticalOffset = (top + bottom) * .5 - (high + low) * .5 * _verticalFit;
+    // At contact during a spin the snapped ghost can project slightly below
+    // the smooth active piece. Protect both silhouettes from excessive cropping.
+    for (final cell in model.landingCells) {
+      for (final dx in [-.43, .43]) {
+        bottom = math.max(
+          bottom,
+          _rawProject(cell.column + dx, cell.row + .43, radius: 1.08).dy,
+        );
+      }
+    }
+    var crownTop = double.infinity;
+    for (var column = 0; column < 36; column++) {
+      crownTop = math.min(
+        crownTop,
+        _rawProject(column / 2, -.8, radius: 1.1).dy - 12,
+      );
+    }
+    final targetBottom = size.y * 1.015;
+    final safeTop = math.max(128.0, size.y * .15);
+    final halfWidth = size.x * .5;
+    final sideExtent = math.max(halfWidth - left, right - halfWidth);
+    _verticalFit = math.min(
+      1.45,
+      math.min(
+        (targetBottom - safeTop) / math.max(1, bottom - crownTop),
+        size.x * .47 / math.max(1, sideExtent),
+      ),
+    );
+    _verticalOffset = targetBottom - bottom * _verticalFit;
+  }
+
+  Rect get projectedActiveBounds {
+    final offset =
+        model.angle + model.collisionBounce - model.activeCenterColumn;
+    final points = model.activeCells.expand(
+      (cell) => projectedBrickFace(
+        cell.column + offset,
+        cell.row - model.riseProgress,
+      ),
+    );
+    var bounds = Rect.fromLTWH(points.first.dx, points.first.dy, 0, 0);
+    for (final point in points) {
+      bounds = bounds.expandToInclude(Rect.fromLTWH(point.dx, point.dy, 0, 0));
+    }
+    return bounds;
+  }
+
+  Rect get projectedLandingBounds {
+    final points = model.landingCells.expand(
+      (cell) => projectedBrickFace(cell.column.toDouble(), cell.row.toDouble()),
+    );
+    var bounds = Rect.fromLTWH(points.first.dx, points.first.dy, 0, 0);
+    for (final point in points) {
+      bounds = bounds.expandToInclude(Rect.fromLTWH(point.dx, point.dy, 0, 0));
+    }
+    return bounds;
   }
 
   /// Actual projected envelope, including the radially extruded outer faces.
@@ -158,6 +241,19 @@ class ChandelierGame extends FlameGame {
       }
     }
     return bounds.inflate(2);
+  }
+
+  /// Viewer-facing occupied face, shared by active and settled cuboids.
+  List<Offset> projectedBrickFace(double column, double row) {
+    _fitProjection();
+    final theta = column * math.pi * 2 / 18 - _yaw;
+    final radius = math.cos(theta) > _radius / _eyeZ ? 1.08 : .92;
+    return [
+      _project(column - .43, row - .43, radius: radius, centerRow: row),
+      _project(column + .43, row - .43, radius: radius, centerRow: row),
+      _project(column + .43, row + .43, radius: radius, centerRow: row),
+      _project(column - .43, row + .43, radius: radius, centerRow: row),
+    ];
   }
 
   /// Matching projected end-plane profiles, used for geometry verification.
@@ -188,11 +284,19 @@ class ChandelierGame extends FlameGame {
     _fitProjection();
     _background(canvas);
     canvas.save();
-    canvas.clipRect(Rect.fromLTWH(0, size.y * .14, size.x, size.y * .68));
+    canvas.clipRect(Rect.fromLTWH(0, size.y * .14, size.x, size.y * .86));
     _rim(canvas, 41.8, false);
     _drawHalf(canvas, false);
-    _plant(canvas);
+    _ecology(canvas, false);
+    final plantBounds = _plant(canvas);
     _drawHalf(canvas, true);
+    _ecology(canvas, true);
+    GardenEcology.paintButterflies(
+      canvas,
+      plantBounds: plantBounds,
+      rings: model.rings,
+      clock: _clock,
+    );
     _halo(canvas, model.landingCells, _mint, false);
     _halo(canvas, model.activeCells, _cream, true);
     _crown(canvas);
@@ -291,9 +395,10 @@ class ChandelierGame extends FlameGame {
       );
     for (final column in columns) {
       final depth = math.cos(column * math.pi * 2 / 18 - _yaw);
-      if ((depth >= 0) != front) continue;
+      if ((depth > _radius / _eyeZ) != front) continue;
       final brightness = front ? .70 + .30 * depth : .36;
       for (var row = 0; row < 42; row++) {
+        if (_viewDepth(column.toDouble(), row.toDouble()) < 1) continue;
         final path = _cell(column.toDouble(), row.toDouble());
         final value = model.board[row][column];
         if (value > 0) {
@@ -351,164 +456,170 @@ class ChandelierGame extends FlameGame {
     }
   }
 
-  void _plant(Canvas canvas) {
+  Rect _plant(Canvas canvas) {
     final anchor = _project(model.angle, 40.8, radius: 0);
     final center = anchor.dx;
     final potBottom = anchor.dy;
-    final potWidth = _width * .22;
-    final potTop = potBottom - potWidth * .65;
-    final shadow = Rect.fromCenter(
-      center: Offset(center + 5, potBottom + 4),
-      width: potWidth * 1.12,
-      height: potWidth * .21,
-    );
-    canvas.drawOval(
-      shadow,
-      Paint()..color = const Color(0xFF041719).withValues(alpha: .5),
-    );
-    final pot = Path()
-      ..moveTo(center - potWidth * .5, potTop)
-      ..lineTo(center + potWidth * .5, potTop)
-      ..lineTo(center + potWidth * .36, potBottom)
-      ..quadraticBezierTo(
-        center,
-        potBottom + potWidth * .15,
-        center - potWidth * .36,
-        potBottom,
-      )
-      ..close();
-    final highlight = .36 + math.sin(_yaw * .25) * .08;
-    canvas.drawPath(
-      pot,
-      Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(center - potWidth * .5, potTop),
-          Offset(center + potWidth * .5, potTop),
-          const [
-            Color(0xFF784635),
-            Color(0xFFd19469),
-            Color(0xFFb66d4e),
-            Color(0xFF704335),
-          ],
-          [0, highlight, .68, 1],
-        ),
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center, potBottom),
-        width: potWidth * .72,
-        height: potWidth * .16,
-      ),
-      Paint()..color = const Color(0xFF8c503d),
-    );
-    final rim = Rect.fromCenter(
-      center: Offset(center, potTop),
-      width: potWidth * 1.12,
-      height: potWidth * .30,
-    );
-    canvas.drawOval(
-      rim.shift(const Offset(0, 3)),
-      Paint()..color = const Color(0xFF9d5d43),
-    );
-    canvas.drawOval(rim, Paint()..color = const Color(0xFFdfa477));
-    canvas.drawOval(
-      rim.deflate(potWidth * .07),
-      Paint()..color = const Color(0xFF342b24),
-    );
-    canvas.drawArc(
-      rim.deflate(1),
-      0,
-      math.pi,
-      false,
-      Paint()
-        ..color = const Color(0xFFf0bc8c)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    for (var i = 0; i < 5; i++) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          center - potWidth * .25 + i * potWidth * .12,
-          potTop + (i.isEven ? -1 : 1),
-          2,
-          1,
-        ),
-        Paint()..color = const Color(0xFF70513b),
+    final potWidth =
+        (_focalX * 2.1 / math.max(1, _viewDepth(model.angle, 40.8, radius: 0)))
+            .clamp(25.0, size.x * .32);
+    final potTop = _project(model.angle, 39.3, radius: 0).dy;
+    if (_viewDepth(model.angle, 40.8, radius: 0) > 1 &&
+        potBottom < size.y * .86) {
+      final shadow = Rect.fromCenter(
+        center: Offset(center + 5, potBottom + 4),
+        width: potWidth * 1.12,
+        height: potWidth * .21,
       );
-    }
-    final growth = model.rings;
-    if (growth == 0) {
-      final tip = Offset(center + 1, potTop - potWidth * .42);
-      canvas.drawLine(
-        Offset(center, potTop),
-        tip,
+      canvas.drawOval(
+        shadow,
+        Paint()..color = const Color(0xFF041719).withValues(alpha: .5),
+      );
+      final pot = Path()
+        ..moveTo(center - potWidth * .5, potTop)
+        ..lineTo(center + potWidth * .5, potTop)
+        ..lineTo(center + potWidth * .36, potBottom)
+        ..quadraticBezierTo(
+          center,
+          potBottom + potWidth * .15,
+          center - potWidth * .36,
+          potBottom,
+        )
+        ..close();
+      final highlight = .36 + math.sin(_yaw * .25) * .08;
+      canvas.drawPath(
+        pot,
         Paint()
-          ..color = const Color(0xFFa3c778)
+          ..shader = ui.Gradient.linear(
+            Offset(center - potWidth * .5, potTop),
+            Offset(center + potWidth * .5, potTop),
+            const [
+              Color(0xFF784635),
+              Color(0xFFd19469),
+              Color(0xFFb66d4e),
+              Color(0xFF704335),
+            ],
+            [0, highlight, .68, 1],
+          ),
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(center, potBottom),
+          width: potWidth * .72,
+          height: potWidth * .16,
+        ),
+        Paint()..color = const Color(0xFF8c503d),
+      );
+      final rim = Rect.fromCenter(
+        center: Offset(center, potTop),
+        width: potWidth * 1.12,
+        height: potWidth * .30,
+      );
+      canvas.drawOval(
+        rim.shift(const Offset(0, 3)),
+        Paint()..color = const Color(0xFF9d5d43),
+      );
+      canvas.drawOval(rim, Paint()..color = const Color(0xFFdfa477));
+      canvas.drawOval(
+        rim.deflate(potWidth * .07),
+        Paint()..color = const Color(0xFF342b24),
+      );
+      canvas.drawArc(
+        rim.deflate(1),
+        0,
+        math.pi,
+        false,
+        Paint()
+          ..color = const Color(0xFFf0bc8c)
+          ..style = PaintingStyle.stroke
           ..strokeWidth = 2,
       );
-      for (final side in [-1.0, 1.0]) {
-        final leaf = Path()
-          ..moveTo(tip.dx, tip.dy + 5)
-          ..quadraticBezierTo(
-            tip.dx + side * potWidth * .40,
-            tip.dy - potWidth * .24,
-            tip.dx + side * potWidth * .37,
-            tip.dy - 2,
-          )
-          ..quadraticBezierTo(
-            tip.dx + side * potWidth * .22,
-            tip.dy + potWidth * .15,
-            tip.dx,
-            tip.dy + 5,
-          );
-        canvas.drawPath(
-          leaf,
-          Paint()
-            ..color = side < 0
-                ? const Color(0xFF6b9f58)
-                : const Color(0xFF9ac66c),
+      for (var i = 0; i < 5; i++) {
+        canvas.drawRect(
+          Rect.fromLTWH(
+            center - potWidth * .25 + i * potWidth * .12,
+            potTop + (i.isEven ? -1 : 1),
+            2,
+            1,
+          ),
+          Paint()..color = const Color(0xFF70513b),
         );
       }
     }
-    if (growth > 0) {
-      final length =
-          math.min(31.0, 3 + growth * .48) * _unit * .76 * _verticalFit;
-      final stemTop = potTop - length;
+    final growth = model.rings;
+    final stemRows = growth == 0 ? 6.8 : math.min(31.0, 3 + growth * .48);
+    final topRow = 39.3 - stemRows;
+    Rect? foliageBounds;
+    for (var row = 39.3; row > topRow; row -= .4) {
+      if (_viewDepth(model.angle, row, radius: 0) < 1 ||
+          _viewDepth(model.angle, row - .4, radius: 0) < 1) {
+        continue;
+      }
+      final a = _project(model.angle, row, radius: 0);
+      final b = _project(model.angle, row - .4, radius: 0);
       canvas.drawLine(
-        Offset(center, potTop),
-        Offset(center + 3, stemTop),
+        a,
+        b,
         Paint()
-          ..color = const Color(0xFF6a8a4c)
-          ..strokeWidth = 3,
+          ..color = const Color(0xFF789450)
+          ..strokeWidth = 2,
       );
-      final leafCount = math.min(23, 2 + growth ~/ 2);
-      for (var i = 0; i < leafCount; i++) {
-        final azimuth = i * 2.4 + _yaw * .25 + (growth ~/ 46) * .31;
-        final side = math.sin(azimuth);
-        final y = potTop - length * (.15 + .8 * (i + 1) / leafCount);
-        final leafSize =
-            _width *
-            (.14 + .025 * math.sin(i * 1.3)) *
-            (.65 + .35 * math.min(1, growth / 12));
-        final anchor = Offset(center + side * leafSize * .72, y);
-        canvas.drawLine(
-          Offset(center, y + leafSize * .3),
-          anchor,
-          Paint()
-            ..color = const Color(0xFF6b9155)
-            ..strokeWidth = 2,
+    }
+    final count = growth == 0 ? 2 : math.min(23, 2 + growth ~/ 2);
+    for (var i = 0; i < count; i++) {
+      final row = growth == 0
+          ? topRow + .5
+          : 39.3 - stemRows * (.15 + .8 * (i + 1) / count);
+      final depth = _viewDepth(model.angle, row, radius: 0);
+      if (depth < 1) continue;
+      final azimuth = i * 2.4 + _yaw * .25 + (growth ~/ 46) * .31;
+      final side = growth == 0 ? (i.isEven ? -1.0 : 1.0) : math.sin(azimuth);
+      final base = _project(model.angle, row, radius: 0);
+      final leafSize = (_focalX * (growth == 0 ? .65 : 1.65) / depth).clamp(
+        8.0,
+        85.0,
+      );
+      final leafAnchor = base + Offset(side * leafSize * .6, 0);
+      if (base.dy < size.y * .12 || base.dy > size.y * .83) continue;
+      canvas.drawLine(
+        base + Offset(0, leafSize * .2),
+        leafAnchor,
+        Paint()
+          ..color = const Color(0xFF789450)
+          ..strokeWidth = 1.5,
+      );
+      if (growth == 0) {
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: leafAnchor + Offset(side * leafSize * .2, -leafSize * .25),
+            width: leafSize,
+            height: leafSize * .45,
+          ),
+          Paint()..color = const Color(0xFF9ac66c),
         );
+      } else {
         _leaf(
           canvas,
-          anchor,
+          leafAnchor,
           leafSize,
           side >= 0 ? 1 : -1,
           .35 + .65 * side.abs(),
           math.cos(azimuth) < 0,
         );
       }
+      final leafBounds = Rect.fromCenter(
+        center: leafAnchor + Offset(0, -leafSize * .4),
+        width: leafSize * 1.4,
+        height: leafSize * 1.4,
+      );
+      foliageBounds = foliageBounds?.expandToInclude(leafBounds) ?? leafBounds;
     }
-    _pothos(canvas);
+    return foliageBounds ??
+        Rect.fromCenter(
+          center: Offset(size.x / 2, size.y * .5),
+          width: 0,
+          height: 0,
+        );
   }
 
   void _leaf(
@@ -580,46 +691,17 @@ class ChandelierGame extends FlameGame {
     canvas.restore();
   }
 
-  void _pothos(Canvas canvas) {
-    final density = (model.stackDepth / 3).floor().clamp(0, 9);
-    final crownY = _project(4.5 + model.angle, -.5).dy;
-    for (var i = 0; i < density; i++) {
-      final side = i.isEven ? -1 : 1;
-      final x = size.x / 2 + side * _width * (.25 + (i % 3) * .035);
-      final length = _unit * (3 + i * 1.5);
-      final vine = Path()
-        ..moveTo(x, crownY)
-        ..quadraticBezierTo(
-          x + side * 8,
-          crownY + length * .5,
-          x - side * 4,
-          crownY + length,
-        );
-      canvas.drawPath(
-        vine,
-        Paint()
-          ..color = const Color(0xFF67874a)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
-      for (var j = 1; j < 7; j++) {
-        final y = crownY + length * j / 7;
-        final s = j.isEven ? 1.0 : -1.0;
-        final leaf = Path()
-          ..moveTo(x, y)
-          ..lineTo(x + s * 6, y - 3)
-          ..lineTo(x + s * 10, y + 1)
-          ..lineTo(x + s * 5, y + 9)
-          ..close();
-        canvas.drawPath(
-          leaf,
-          Paint()
-            ..color = j.isEven
-                ? const Color(0xFF6f9a57)
-                : const Color(0xFF3e7349),
-        );
-      }
-    }
+  void _ecology(Canvas canvas, bool front) {
+    GardenEcology.paintHalf(
+      canvas,
+      model: model,
+      clock: _clock,
+      front: front,
+      project: (column, row, {radius = 1, double? centerRow}) =>
+          _project(column, row, radius: radius, centerRow: centerRow),
+      yaw: _yaw,
+      unit: _unit,
+    );
   }
 
   void _rim(Canvas canvas, double row, bool front) {
@@ -629,6 +711,10 @@ class ChandelierGame extends FlameGame {
       final column = model.angle + i * 18 / 120;
       final isFront = math.cos(i * math.pi * 2 / 120) >= 0;
       if (isFront != front) {
+        started = false;
+        continue;
+      }
+      if (_viewDepth(column, row, radius: 1.025) < 1) {
         started = false;
         continue;
       }
@@ -650,27 +736,116 @@ class ChandelierGame extends FlameGame {
   }
 
   void _crown(Canvas canvas) {
+    const brass = Color(0xFFc49a61);
+    const shadow = Color(0xFF5d5540);
+    final light = _project(model.angle, -1.2, radius: 0);
+    final crownWidth =
+        (_focalX * 8 / math.max(1, _viewDepth(model.angle, -2, radius: 0)))
+            .clamp(94.0, size.x * .65);
+    final apex = light + Offset(0, -crownWidth * .23);
+    // A tiered central canopy and six curved metal arms, depth ordered.
+    for (final rear in [true, false]) {
+      for (var i = 0; i < 6; i++) {
+        final column = i * 3.0;
+        final depth = math.cos(column * math.pi * 2 / 18 - _yaw);
+        if ((depth < 0) != rear) continue;
+        final azimuth = column * math.pi * 2 / 18 - _yaw;
+        final side = math.sin(azimuth);
+        final root = light + Offset(side * crownWidth * .08, -crownWidth * .13);
+        final elbow =
+            light + Offset(side * crownWidth * .40, -crownWidth * .34);
+        final tip =
+            light + Offset(side * crownWidth * .51, depth * crownWidth * .055);
+        final curl =
+            light +
+            Offset(side * crownWidth * .46, depth * crownWidth * .055 + 7);
+        final arm = Path()
+          ..moveTo(root.dx, root.dy)
+          ..quadraticBezierTo(elbow.dx, elbow.dy, tip.dx, tip.dy)
+          ..quadraticBezierTo(curl.dx, curl.dy, curl.dx + 1, curl.dy + 2);
+        canvas.drawPath(
+          arm,
+          Paint()
+            ..color = shadow
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4,
+        );
+        canvas.drawPath(
+          arm.shift(const Offset(-.5, -.5)),
+          Paint()
+            ..color = rear ? const Color(0xFF827751) : brass
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
+        canvas.drawLine(
+          tip,
+          Offset(tip.dx, tip.dy + 7),
+          Paint()
+            ..color = brass
+            ..strokeWidth = 1,
+        );
+        final gem = Path()
+          ..moveTo(tip.dx, tip.dy + 5)
+          ..lineTo(tip.dx + 2.5, tip.dy + 9)
+          ..lineTo(tip.dx, tip.dy + 14)
+          ..lineTo(tip.dx - 2.5, tip.dy + 9)
+          ..close();
+        canvas.drawPath(
+          gem,
+          Paint()..color = _cream.withValues(alpha: rear ? .40 : .85),
+        );
+      }
+    }
     _rim(canvas, -.8, false);
     _rim(canvas, -.8, true);
-    final light = _project(model.angle, -.8, radius: 0);
+    canvas.drawLine(
+      apex,
+      light,
+      Paint()
+        ..color = shadow
+        ..strokeWidth = 5,
+    );
+    canvas.drawLine(
+      apex + const Offset(-1, 0),
+      light + const Offset(-1, 0),
+      Paint()
+        ..color = brass
+        ..strokeWidth = 2,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(center: apex, width: 19, height: 5),
+      Paint()..color = brass,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(apex.dx, apex.dy + 6),
+        width: 25,
+        height: 5,
+      ),
+      Paint()..color = shadow,
+    );
     canvas.drawCircle(
       light,
-      _width * .25,
+      49,
       Paint()
-        ..shader = ui.Gradient.radial(light, _width * .25, [
+        ..shader = ui.Gradient.radial(light, 49, [
           _cream.withValues(alpha: .30),
           _cream.withValues(alpha: 0),
         ]),
     );
-    canvas.drawLine(
-      Offset(light.dx, light.dy - 19),
-      light,
-      Paint()
-        ..color = const Color(0xFFb19060)
-        ..strokeWidth = 2,
-    );
+    final shade = Path()
+      ..moveTo(light.dx - 5, light.dy - 6)
+      ..lineTo(light.dx + 5, light.dy - 6)
+      ..lineTo(light.dx + 12, light.dy + 3)
+      ..lineTo(light.dx - 12, light.dy + 3)
+      ..close();
+    canvas.drawPath(shade, Paint()..color = brass);
     canvas.drawRect(
-      Rect.fromCenter(center: light, width: 19, height: 7),
+      Rect.fromCenter(
+        center: Offset(light.dx, light.dy + 4),
+        width: 22,
+        height: 4,
+      ),
       Paint()..color = _cream,
     );
   }
@@ -682,8 +857,9 @@ class ChandelierGame extends FlameGame {
     Color color,
     double light,
   ) {
+    if (_viewDepth(column, row) < 1) return;
     final theta = column * math.pi * 2 / 18 - _yaw;
-    final front = math.cos(theta) >= 0;
+    final front = math.cos(theta) > _radius / _eyeZ;
     final radialSign = front ? 1.0 : -1.0;
     final faceRadius = front ? 1.08 : .92;
     List<Offset> corners(double radius) => [
@@ -711,8 +887,8 @@ class ChandelierGame extends FlameGame {
       canvas.drawPath(Path()..addPolygon(points, true), Paint()..color = fill);
     }
 
-    // Top plane has outward normal (0,-1,0), visible from above.
-    polygon([back[0], back[1], face[1], face[0]], surface(0, -1, 0));
+    // The eye is below the piece: the bottom plane faces the viewer.
+    polygon([back[3], face[3], face[2], back[2]], surface(0, 1, 0));
     // The left tangent face points toward the viewer on the cylinder's right
     // half, and vice versa. Selection uses the positive z dot view directly.
     final sine = math.sin(theta);
