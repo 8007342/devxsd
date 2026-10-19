@@ -6,4 +6,4 @@
 - [x] 2.2 Fix active solid composition and enlarge the first queue preview relative to its successors.
 ## 3. Ship
 - [x] 3.1 Synchronize docs/specs and pass Flutter, Worker, release-build and strict-spec checks.
-- [ ] 3.2 Refresh and inspect local Chromium, then commit, merge main and push origin/main.
+- [x] 3.2 Refresh and inspect local Chromium, then commit, merge main and push origin/main.
