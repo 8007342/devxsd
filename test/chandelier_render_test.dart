@@ -14,7 +14,7 @@ void main() {
     const Size(428, 926),
     const Size(520, 720),
   ]) {
-    test('whole board stays between HUD and controls at $viewport', () {
+    test('modest zoom retains readable framing at $viewport', () {
       final model = PuzzleModel(seed: 42);
       final game = ChandelierGame(model: model);
       game.onGameResize(Vector2(viewport.width, viewport.height));
@@ -23,22 +23,22 @@ void main() {
         final bounds = game.projectedBoardBounds;
         expect(
           bounds.left,
-          greaterThanOrEqualTo(0),
+          greaterThanOrEqualTo(-viewport.width * .06),
           reason: 'left rim at angle $angle',
         );
         expect(
           bounds.right,
-          lessThanOrEqualTo(viewport.width),
+          lessThanOrEqualTo(viewport.width * 1.06),
           reason: 'right rim at angle $angle',
         );
         expect(
           bounds.top,
-          greaterThanOrEqualTo(viewport.height * .14),
+          greaterThanOrEqualTo(viewport.height * .10),
           reason: 'crown below HUD/clip at angle $angle',
         );
         expect(
           bounds.bottom,
-          lessThanOrEqualTo(viewport.height * .82),
+          lessThanOrEqualTo(viewport.height * .87),
           reason: 'bottom rim above controls at angle $angle',
         );
       }
@@ -73,15 +73,35 @@ void main() {
     },
   );
 
-  for (final growth in [0, 24]) {
-    testWidgets('botanical assets and cylinder render at $growth rings', (
-      tester,
-    ) async {
+  for (final fixture in [
+    (rings: 0, age: 0.0, vigor: 1.0, label: 'sprout'),
+    (rings: 24, age: 0.0, vigor: 1.0, label: 'buds'),
+    (rings: 24, age: 3.0, vigor: 1.0, label: 'unfolding'),
+    (rings: 24, age: 10.0, vigor: 1.0, label: 'mature'),
+    (rings: 24, age: 10.0, vigor: 1.54, label: 'multi-clear'),
+    (rings: 120, age: 10.0, vigor: 1.18, label: 'late-growth'),
+  ]) {
+    final growth = fixture.rings;
+    testWidgets('botanical assets render ${fixture.label}', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final model = PuzzleModel(seed: 42)..rings = growth;
+      if (growth > 0) {
+        model.leaves.addAll(
+          List.generate(
+            24,
+            (i) => PlantLeaf(
+              node: growth - 23 + i,
+              bornAt: -fixture.age,
+              vigor: fixture.vigor,
+              variation: ((i * 13) % 19) / 19,
+              azimuth: ((i * 7) % 11) / 11,
+            ),
+          ),
+        );
+      }
       for (var row = 0; row < (growth == 0 ? 0 : 18); row++) {
         model.board[row][0] = row % 7 + 1;
         model.board[row][9] = (row + 3) % 7 + 1;
@@ -119,8 +139,8 @@ void main() {
         expect(image.width, greaterThan(0));
         expect(image.height, greaterThan(0));
       }
-      expect(game.projectedBoardBounds.top, greaterThanOrEqualTo(844 * .14));
-      expect(game.projectedBoardBounds.bottom, lessThanOrEqualTo(844 * .82));
+      expect(game.projectedBoardBounds.top, greaterThanOrEqualTo(844 * .10));
+      expect(game.projectedBoardBounds.bottom, lessThanOrEqualTo(844 * .87));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
       expect(tester.takeException(), isNull);
@@ -132,9 +152,7 @@ void main() {
         expect(image.height, 844);
         final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
         expect(bytes, isNotNull);
-        final destination = File(
-          'build/test/${growth == 0 ? 'sprout' : 'growth'}.png',
-        );
+        final destination = File('build/test/${fixture.label}.png');
         await destination.parent.create(recursive: true);
         await destination.writeAsBytes(bytes!.buffer.asUint8List());
         image.dispose();

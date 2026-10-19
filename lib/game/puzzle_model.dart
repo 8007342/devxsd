@@ -2,6 +2,23 @@ import 'dart:math' as math;
 
 enum GameMode { timed, unlimited }
 
+class PlantLeaf {
+  const PlantLeaf({
+    required this.node,
+    required this.bornAt,
+    required this.vigor,
+    required this.variation,
+    required this.azimuth,
+  });
+  final int node;
+  final double bornAt;
+  final double vigor;
+  final double variation;
+  final double azimuth;
+  double opening(double elapsed) => ((elapsed - bornAt) / 7).clamp(0.0, 1.0);
+  double get matureScale => (.80 + variation * .4) * vigor;
+}
+
 class GridCell {
   const GridCell(this.column, this.row);
   final int column;
@@ -24,22 +41,36 @@ class PuzzleModel {
     rows,
     (_) => List.filled(columns, 0),
   );
+  final List<List<double>> _settledAt = List.generate(
+    rows,
+    (_) => List.filled(columns, double.nan),
+  );
   final List<int> _bag = [];
   final List<int> _queue = [];
   int activeType = 1;
+  int _pieceSerial = 0;
+
+  /// Changes on every spawn, including resets and blocked spawns.
+  int get pieceSerial => _pieceSerial;
   int _row = 39;
   int _rotation = 0;
   double angle = 0;
   double spinVelocity = 0;
   double _progress = 0;
   bool _dragging = false;
-  int _lastTurn = 1;
+  double _coastTime = 0;
+  double? _snapTarget;
+  double _snapPhase = 0;
   double contactTime = 0;
   int _resets = 0;
   int rings = 0;
   double elapsed = 0;
   bool finished = false;
-  bool won = false;
+  bool get won => thirtyRingTime != null;
+  double? thirtyRingTime;
+  int gardenSeed = 0;
+  final List<PlantLeaf> leaves = [];
+  double get stemRows => 3 + 34 * (1 - math.exp(-rings / 55));
   bool softDrop = false;
   List<int> lastClearedRows = [];
   int clearSerial = 0;
@@ -47,6 +78,13 @@ class PuzzleModel {
   List<int> get nextPieces => List.unmodifiable(_queue.take(3));
   double get speed => 1 + 0.55 * math.log(1 + rings / 5);
   double get plantHeight => rings.toDouble();
+
+  /// Gameplay seconds since this surviving block was placed; empty cells are 0.
+  double settledAge(int row, int column) {
+    final c = wrap(column);
+    if (board[row][c] == 0 || _settledAt[row][c].isNaN) return 0;
+    return math.max(0, elapsed - _settledAt[row][c]);
+  }
 
   /// Fraction of the next upward cell travelled, for visual interpolation.
   double get riseProgress =>
@@ -75,8 +113,7 @@ class PuzzleModel {
     return (xs.reduce(math.min) + xs.reduce(math.max)) / 2;
   }
 
-  int _nearest(double value) =>
-      (value + 0.5 - (_lastTurn < 0 ? 1e-9 : 0)).floor();
+  int _nearest(double value) => (value + 0.5).floor();
   static int wrap(int column) => column % columns;
   static const _shapes = [
     [
@@ -165,15 +202,21 @@ class PuzzleModel {
     for (final row in board) {
       row.fillRange(0, columns, 0);
     }
+    for (final row in _settledAt) {
+      row.fillRange(0, columns, double.nan);
+    }
+    _coastTime = 0;
+    _snapTarget = null;
     _bag.clear();
     _queue.clear();
     rings = 0;
     elapsed = 0;
     finished = false;
-    won = false;
+    thirtyRingTime = null;
+    gardenSeed = _random.nextInt(1 << 30);
+    leaves.clear();
     softDrop = false;
     _dragging = false;
-    _lastTurn = 1;
     angle = 0;
     spinVelocity = 0;
     collisionBounce = 0;
@@ -184,14 +227,17 @@ class PuzzleModel {
   }
 
   void _spawn() {
+    _pieceSerial++;
     activeType = _queue.removeAt(0);
     _queue.add(_draw());
     _rotation = 0;
+    _snapPhase = angle - angle.floorToDouble();
     _row = rows - 2;
     _progress = 0;
     contactTime = 0;
     _resets = 0;
     if (!_fits(_column, _row, _rotation)) finished = true;
+    if (_snapTarget != null && !finished) _beginSnap();
   }
 
   void _adjusted() {
@@ -218,6 +264,7 @@ class PuzzleModel {
         _row += kick[1];
         _rotation = rotation;
         _adjusted();
+        if (_snapTarget != null) _beginSnap();
         return;
       }
     }
@@ -225,9 +272,16 @@ class PuzzleModel {
 
   void dragColumns(double delta) {
     if (finished || !delta.isFinite) return;
+    _snapTarget = null;
+    _coastTime = 0;
+    spinVelocity = 0;
+    _moveColumns(delta);
+  }
+
+  void _moveColumns(double delta) {
+    if (finished || !delta.isFinite) return;
     final target = angle + delta;
     final start = _column;
-    if (delta != 0) _lastTurn = delta > 0 ? 1 : -1;
     final end = _nearest(target - activeCenterOffset);
     final direction = end >= start ? 1 : -1;
     for (
@@ -250,11 +304,53 @@ class PuzzleModel {
     if (finished) return;
     _dragging = true;
     spinVelocity = 0;
+    _snapTarget = null;
+    _coastTime = 0;
   }
 
   void releaseSpin(double velocity) {
     _dragging = false;
-    if (!finished && velocity.isFinite) spinVelocity = velocity.clamp(-40, 40);
+    _snapTarget = null;
+    _coastTime = 0;
+    if (!finished && velocity.isFinite) {
+      spinVelocity = velocity.clamp(-40, 40);
+      if (spinVelocity.abs() <= 10) _beginSnap();
+    }
+  }
+
+  // The cylinder lattice has a stable phase for this piece. Changing the
+  // occupied width on rotation must not replace that phase with a half-step.
+  double _snapAngleFor(int anchor) {
+    final center = anchor + activeCenterOffset;
+    final base = (center - _snapPhase).floor();
+    final candidates = [
+      for (var step = -1; step <= 2; step++) base + step + _snapPhase,
+    ]..sort((a, b) => (a - angle).abs().compareTo((b - angle).abs()));
+    return candidates.firstWhere(
+      (candidate) => _nearest(candidate - activeCenterOffset) == anchor,
+    );
+  }
+
+  void _beginSnap() {
+    spinVelocity = 0;
+    _snapTarget = _snapAngleFor(_column);
+  }
+
+  /// Discrete input owns the selected grid anchor, even during a pending snap.
+  void shiftColumn(int direction) {
+    if (finished || direction == 0) return;
+    final target = _column + direction.sign;
+    _dragging = false;
+    spinVelocity = 0;
+    _coastTime = 0;
+    _snapTarget = null;
+    if (_fits(target, _row, _rotation)) {
+      angle = _snapAngleFor(target);
+      _adjusted();
+    } else {
+      angle = _snapAngleFor(_column);
+      collisionBounce = -direction.sign * .12;
+    }
   }
 
   void update(double dt) {
@@ -268,12 +364,25 @@ class PuzzleModel {
       collisionBounce *= math.exp(-step * 18);
       if (_dragging) {
         // Direct manipulation owns the angle until pointer release.
-      } else if (spinVelocity.abs() > 0.03) {
-        dragColumns(spinVelocity * step);
+      } else if (_snapTarget != null) {
+        final delta = _snapTarget! - angle;
+        // Finite speed plus an exact final assignment avoids an asymptotic tail.
+        final travel = delta.clamp(-step * 10, step * 10);
+        final expected = angle + travel;
+        _moveColumns(travel);
+        if ((angle - expected).abs() > 1e-9) {
+          _snapTarget = null;
+          _beginSnap();
+        } else if ((_snapTarget! - angle).abs() < 1e-9) {
+          _snapTarget = null;
+        }
+      } else if (spinVelocity.abs() > 10 && _coastTime < 0.30) {
+        _moveColumns(spinVelocity * step);
         spinVelocity *= math.exp(-3 * step);
-      } else {
-        spinVelocity = 0;
-        dragColumns((_nearest(angle) - angle) * math.min(1, step * 12));
+        _coastTime += step;
+        if (spinVelocity.abs() <= 10 || _coastTime >= 0.30) _beginSnap();
+      } else if (spinVelocity != 0 || angle != _snapAngleFor(_column)) {
+        _beginSnap();
       }
       if (_fits(_column, _row - 1, _rotation)) {
         contactTime = 0;
@@ -292,6 +401,9 @@ class PuzzleModel {
 
   void hardDrop() {
     if (finished) return;
+    _dragging = false;
+    spinVelocity = 0;
+    _snapTarget = null;
     while (_fits(_column, _row - 1, _rotation)) {
       _row--;
     }
@@ -301,6 +413,7 @@ class PuzzleModel {
   void _lock() {
     for (final c in activeCells) {
       board[c.row][c.column] = activeType;
+      _settledAt[c.row][c.column] = elapsed;
     }
     lastClearedRows = [
       for (var r = 0; r < rows; r++)
@@ -311,21 +424,61 @@ class PuzzleModel {
         for (var r = 0; r < rows; r++)
           if (!lastClearedRows.contains(r)) List<int>.of(board[r]),
       ];
+      final remainingAges = [
+        for (var r = 0; r < rows; r++)
+          if (!lastClearedRows.contains(r)) List<double>.of(_settledAt[r]),
+      ];
+      remainingAges.addAll(
+        List.generate(
+          lastClearedRows.length,
+          (_) => List.filled(columns, double.nan),
+        ),
+      );
       remaining.addAll(
         List.generate(lastClearedRows.length, (_) => List.filled(columns, 0)),
       );
       for (var r = 0; r < rows; r++) {
         board[r].setAll(0, remaining[r]);
+        _settledAt[r].setAll(0, remainingAges[r]);
       }
-      rings += lastClearedRows.length;
+      final count = lastClearedRows.length;
+      for (var i = 0; i < count; i++) {
+        final node = rings + i + 1;
+        final random = math.Random(gardenSeed + node * 7919);
+        leaves.add(
+          PlantLeaf(
+            node: node,
+            bornAt: elapsed,
+            vigor: 1 + (count - 1) * .18,
+            variation: random.nextDouble(),
+            azimuth: random.nextDouble() * .7,
+          ),
+        );
+        // Keep basal foliage and recent growth; old internodes form the canopy.
+        if (leaves.length > 40) leaves.removeAt(8);
+      }
+      rings += count;
       clearSerial++;
     }
-    if (mode == GameMode.timed && rings >= targetRings) {
-      won = true;
-      finished = true;
-      return;
+    if (thirtyRingTime == null && rings >= targetRings) {
+      thirtyRingTime = elapsed;
     }
     _spawn();
+  }
+
+  /// Stamp a deterministic settled-cell fixture, including its existing age.
+  void debugSetSettled({
+    required int row,
+    required int column,
+    required int type,
+    double age = 0,
+  }) {
+    if (!age.isFinite || age < 0 || type < 0 || type > 7) {
+      throw ArgumentError('Expected type 0..7 and a nonnegative finite age');
+    }
+    final c = wrap(column);
+    board[row][c] = type;
+    _settledAt[row][c] = type == 0 ? double.nan : elapsed - age;
   }
 
   /// Deterministic fixture hook, also useful for interactive rules debugging.
@@ -335,9 +488,12 @@ class PuzzleModel {
     required int row,
     int rotation = 0,
   }) {
+    _snapTarget = null;
+    _coastTime = 0;
     activeType = type;
     _rotation = rotation;
     angle = column + activeCenterOffset;
+    _snapPhase = angle - angle.floorToDouble();
     _row = row;
     _progress = 0;
     contactTime = 0;

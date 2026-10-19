@@ -15,7 +15,9 @@ Flutter's engine default without a network request.
 
 `night-landscape.png` was generated with the built-in imagegen tool on 2026-10-17
 for the full-cylinder camera revision. It is bundled and used as the far landscape
-layer, with nearer code-native silhouettes for separate parallax motion.
+layer. `GardenBackdrop` now composes it into softly blended sky and terrain
+passes with independent time-driven offsets, additional foreground silhouettes
+and a subdued light cycle. The original raster stays bundled and unchanged.
 
 Prompt:
 

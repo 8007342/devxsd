@@ -1,8 +1,8 @@
 schema: spec-driven
 context: |
   DEVxSD GameJam uses Flutter and Flame for Chandelier, a mobile upward cylindrical puzzle.
-  Board is 18 wrapping columns by 42 rows. Timed mode targets 30 rings for early playtesting;
-  Unlimited ranks plant height. Blocks float up, rings grow a central Monstera, pothos descend.
+  Board is 18 wrapping columns by 42 rows. One combined game records first-thirty time internally and continues until blocked spawn;
+  one total-rings scoreboard shows same-run time and Monstera height. The live HUD has no clock. Blocks float up, rings grow a central Monstera, pothos descend.
   Touch drag rotates the cylinder; taps/buttons rotate pieces; hold accelerates, swipe up locks.
   OpenSpec specs define shipped behavior; plan/ tracks art direction, defaults and remaining work.
   Cloudflare Workers serves build/web and a Durable Object leaderboard API.

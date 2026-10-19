@@ -7,6 +7,7 @@ void main() {
   setUp(() {
     for (final mode in GameMode.values) {
       platform.write('devxsd.leaderboard.v1.${mode.name}', '[]');
+      platform.write('devxsd.leaderboard.v2.${mode.name}', '[]');
     }
   });
 
@@ -102,4 +103,44 @@ void main() {
       expect((await repository.fetch(GameMode.timed)).entries, isEmpty);
     },
   );
+
+  test(
+    'paired offline records preserve milestone and final values from same run',
+    () async {
+      final repository = LeaderboardRepository();
+      await repository.submitRun(GameMode.timed, 'abc', 600, 80, 91, 123.4);
+      final timed = (await repository.fetch(GameMode.timed)).entries.single;
+      final survival = (await repository.fetch(
+        GameMode.unlimited,
+      )).entries.single;
+      expect(timed.toJson(), survival.toJson());
+      expect(timed.time30, 123.4);
+      expect(timed.seconds, 600);
+      expect(timed.rings, 80);
+      expect(timed.height, 91);
+      await repository.submitRun(GameMode.unlimited, 'def', 900, 100, 10, 200);
+      expect(
+        (await repository.fetch(GameMode.unlimited)).entries.first.name,
+        'DEF',
+      );
+      expect(
+        (await repository.fetch(GameMode.timed)).entries.first.name,
+        'ABC',
+      );
+      await repository.submitRun(GameMode.unlimited, 'new', 20, 2, 2, null);
+      expect((await repository.fetch(GameMode.timed)).entries.length, 2);
+      expect((await repository.fetch(GameMode.unlimited)).entries.length, 3);
+    },
+  );
+  test('legacy cached entries retain first-thirty times', () async {
+    platform.write(
+      'devxsd.leaderboard.v2.timed',
+      '[{"name":"OLD","seconds":100,"rings":30,"height":30}]',
+    );
+    final entry = (await LeaderboardRepository().fetch(
+      GameMode.timed,
+    )).entries.single;
+    expect(entry.seconds, 100);
+    expect(entry.time30, 100);
+  });
 }

@@ -193,3 +193,35 @@ with actual projected radial extrusion from the cylinder surface. Front boxes
 face outward and rear boxes face inward toward the viewer. Choose the visible
 tangent face from its outward normal and light every face from one upper-left,
 above/front source. Preserve filled faces and external active halos.
+
+
+## Retained chandelier refinement with original cylinder
+
+Restore main 413bf3b projection, cylinder width, full-board fitting and gentle stack pullback. Retain the broad six-arm brass crown, curled ends, crystal pendants and shaded warm lamp. Keep age-based rooted pothos, moss, dirt, sparse insects and butterflies. Original outward faces and grounded pot proportions remain. This supersedes the square-cell, landing-focused and upward close-up experiments.
+
+## Precision and growing garden refinement
+
+Apply a 1.10 uniform zoom to the original board scene, leaving projection, camera
+angles and aspect ratio intact. Slight edge spill is intentional. Rotation arrows
+are borderless and pulse mint on side taps; only the held-ascent control retains
+a circular contour. Space enlarged next-piece previews vertically on the right.
+
+Leaves retain seeded irregular scales and poses per run. Births roll up, then
+unfold over seven gameplay seconds; multi-ring births gain lasting size and light.
+Keep basal foliage plus recent growth nodes as older internodes join the canopy,
+so runs beyond thirty rings continue adding visible foliage and plant height.
+
+## Quiet garden polish
+
+Keep cylinder yaw and snap phase stable through piece rotation, including its
+subsequent settling frames. One play action and one rings table replace alternate
+entry paths and score tabs. Show absolute ring counts and no live clocks.
+
+Blend the original panorama in separate sky, distant and near terrain passes.
+Temporal offsets remain below 1.2% of viewport width; hills and haze move slowly.
+Use a low-opacity twelve-minute tint cycle without bright flashes. Pause freezes it.
+The first queue item uses 15px blocks, with 10px and 9px followers.
+
+All active glow paints before the entire opaque piece; faces share the settled
+brick normal, lighting and depth order. Never wash neighboring solid faces with
+a later glow stroke.

@@ -5,12 +5,15 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import 'puzzle_model.dart';
+import 'garden_ecology.dart';
+import 'garden_backdrop.dart';
 
 /// A perspective view of the rules grid. Drawing never participates in collision.
 class ChandelierGame extends FlameGame {
   ChandelierGame({required this.model});
 
   final PuzzleModel model;
+  static const sceneZoom = 1.10;
   double _clock = 0;
   double _cameraRow = 20.5;
   double _visibleRows = 46;
@@ -157,7 +160,7 @@ class ChandelierGame extends FlameGame {
         );
       }
     }
-    return bounds.inflate(2);
+    return _zoomBounds(bounds.inflate(2));
   }
 
   /// Matching projected end-plane profiles, used for geometry verification.
@@ -168,7 +171,15 @@ class ChandelierGame extends FlameGame {
       final point = _project(i / 20, row, radius: 1.025);
       bounds = bounds.expandToInclude(Rect.fromLTWH(point.dx, point.dy, 0, 0));
     }
-    return bounds;
+    return _zoomBounds(bounds);
+  }
+
+  Rect _zoomBounds(Rect bounds) {
+    final center = Offset(size.x / 2, size.y * .48);
+    return Rect.fromPoints(
+      center + (bounds.topLeft - center) * sceneZoom,
+      center + (bounds.bottomRight - center) * sceneZoom,
+    );
   }
 
   Path _cell(double column, double row, [double inset = .07]) {
@@ -188,11 +199,29 @@ class ChandelierGame extends FlameGame {
     _fitProjection();
     _background(canvas);
     canvas.save();
-    canvas.clipRect(Rect.fromLTWH(0, size.y * .14, size.x, size.y * .68));
+    canvas.clipRect(Rect.fromLTWH(0, size.y * .115, size.x, size.y * .755));
+    canvas.translate(size.x / 2, size.y * .48);
+    canvas.scale(sceneZoom);
+    canvas.translate(-size.x / 2, -size.y * .48);
     _rim(canvas, 41.8, false);
     _drawHalf(canvas, false);
+    _ecology(canvas, false);
     _plant(canvas);
     _drawHalf(canvas, true);
+    _ecology(canvas, true);
+    final soil = _project(model.angle, 39.3, radius: 0);
+    GardenEcology.paintButterflies(
+      canvas,
+      plantBounds: Rect.fromLTRB(
+        soil.dx - _width * .22,
+        soil.dy - model.stemRows * _unit * .76 * _verticalFit,
+        soil.dx + _width * .22,
+        soil.dy,
+      ),
+      rings: model.rings,
+      clock: _clock,
+    );
+
     _halo(canvas, model.landingCells, _mint, false);
     _halo(canvas, model.activeCells, _cream, true);
     _crown(canvas);
@@ -215,51 +244,13 @@ class ChandelierGame extends FlameGame {
           [0, .7, 1],
         ),
     );
-    final night = _nightImage;
-    if (night != null) {
-      final factor =
-          math.max(size.x / night.width, size.y / night.height) * 1.10;
-      final width = night.width * factor;
-      final height = night.height * factor;
-      final drift = math.sin(_yaw * .12) * size.x * .025;
-      canvas.drawImageRect(
-        night,
-        Rect.fromLTWH(0, 0, night.width.toDouble(), night.height.toDouble()),
-        Rect.fromLTWH(
-          (size.x - width) / 2 + drift,
-          (size.y - height) / 2 + math.cos(_yaw * .08) * 4,
-          width,
-          height,
-        ),
-        Paint()..filterQuality = FilterQuality.none,
-      );
-      canvas.drawRect(
-        rect,
-        Paint()..color = const Color(0xFF071d26).withValues(alpha: .20),
-      );
-    }
-    // Separate nearer hills move faster than the distant panorama.
-    for (var layer = 0; layer < 2; layer++) {
-      final shift = math.sin(_yaw * (.18 + layer * .09)) * (12 + layer * 10);
-      final hill = Path()..moveTo(-50, size.y);
-      for (var i = -2; i < 15; i++) {
-        final x = i * size.x / 10 + shift;
-        final y =
-            size.y * (.82 + layer * .045) +
-            math.sin(i * .85 + layer * 2) * (18 + layer * 8);
-        hill.lineTo(x, y);
-      }
-      hill
-        ..lineTo(size.x + 50, size.y)
-        ..close();
-      canvas.drawPath(
-        hill,
-        Paint()
-          ..color = layer == 0
-              ? const Color(0xFF163c3e)
-              : const Color(0xFF0a292c),
-      );
-    }
+    GardenBackdrop.paint(
+      canvas,
+      size: Size(size.x, size.y),
+      image: _nightImage,
+      seconds: _clock,
+      yaw: _yaw,
+    );
     // Restrained distant conservatory architecture and warm dust.
     final frame = Paint()
       ..color = const Color(0xFF34554d).withValues(alpha: .22)
@@ -312,43 +303,109 @@ class ChandelierGame extends FlameGame {
     }
   }
 
+  List<({double column, double row})> get activeDrawCells {
+    final offset =
+        model.angle + model.collisionBounce - model.activeCenterColumn;
+    final cells = model.activeCells
+        .map(
+          (cell) => (
+            column: cell.column + offset,
+            row: cell.row - model.riseProgress,
+          ),
+        )
+        .toList();
+    cells.sort((a, b) {
+      final depth = math
+          .cos(a.column * math.pi * 2 / 18 - _yaw)
+          .compareTo(math.cos(b.column * math.pi * 2 / 18 - _yaw));
+      return depth != 0 ? depth : a.row.compareTo(b.row);
+    });
+    return cells;
+  }
+
   void _halo(Canvas canvas, List<GridCell> cells, Color color, bool active) {
-    for (final cell in cells) {
-      final visualRow = cell.row.toDouble() - (active ? model.riseProgress : 0);
-      final visualColumn =
-          cell.column.toDouble() +
-          (active
-              ? model.angle + model.collisionBounce - model.activeCenterColumn
-              : 0);
-      // Paint the glow first; the opaque raised brick covers its entire interior.
-      final path = _cell(visualColumn, visualRow, active ? -.015 : .035);
+    final visualCells = active
+        ? activeDrawCells
+        : [
+            for (final cell in cells)
+              (column: cell.column.toDouble(), row: cell.row.toDouble()),
+          ];
+    // Every glow goes behind the WHOLE opaque piece. Interleaving strokes and
+    // cuboids lets later neighboring glows wash out the earlier brick faces.
+    for (final cell in visualCells) {
+      final path = active
+          ? (Path()..addPolygon(
+              _brickCorners(
+                cell.column,
+                cell.row,
+                math.cos(cell.column * math.pi * 2 / 18 - _yaw) >= 0
+                    ? 1.08
+                    : .92,
+                half: .49,
+              ),
+              true,
+            ))
+          : _cell(cell.column, cell.row, .035);
       if (!active) {
         canvas.drawPath(path, Paint()..color = color.withValues(alpha: .11));
       }
       canvas.drawPath(
         path,
         Paint()
-          ..color = color.withValues(alpha: active ? .20 : .13)
+          ..color = color.withValues(alpha: active ? .16 : .13)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = active ? 5 : 7,
+          ..strokeWidth = active ? 4 : 7,
       );
       canvas.drawPath(
         path,
         Paint()
-          ..color = color.withValues(alpha: active ? .85 : .88)
+          ..color = color.withValues(alpha: active ? .8 : .88)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = active ? 1.2 : 1.6,
+          ..strokeWidth = active ? 1 : 1.6,
       );
-      if (active) {
+    }
+    if (active) {
+      for (final cell in visualCells) {
+        final depth = math.cos(cell.column * math.pi * 2 / 18 - _yaw);
         _brick(
           canvas,
-          visualColumn,
-          visualRow,
+          cell.column,
+          cell.row,
           _colors[(model.activeType - 1) % 7],
-          .96,
+          depth >= 0 ? .70 + .30 * depth : .36,
         );
       }
     }
+  }
+
+  List<Offset> _brickCorners(
+    double column,
+    double row,
+    double radius, {
+    double half = .43,
+  }) => [
+    _project(column - half, row - half, radius: radius, centerRow: row),
+    _project(column + half, row - half, radius: radius, centerRow: row),
+    _project(column + half, row + half, radius: radius, centerRow: row),
+    _project(column - half, row + half, radius: radius, centerRow: row),
+  ];
+
+  /// Shared solid pass for active/settled render verification and composition.
+  void paintBrick(Canvas canvas, double column, double row, int type) {
+    _fitProjection();
+    final depth = math.cos(column * math.pi * 2 / 18 - _yaw);
+    _brick(
+      canvas,
+      column,
+      row,
+      _colors[type - 1],
+      depth >= 0 ? .70 + .30 * depth : .36,
+    );
+  }
+
+  void paintActivePiece(Canvas canvas) {
+    _fitProjection();
+    _halo(canvas, model.activeCells, _cream, true);
   }
 
   void _plant(Canvas canvas) {
@@ -471,8 +528,7 @@ class ChandelierGame extends FlameGame {
       }
     }
     if (growth > 0) {
-      final length =
-          math.min(31.0, 3 + growth * .48) * _unit * .76 * _verticalFit;
+      final length = model.stemRows * _unit * .76 * _verticalFit;
       final stemTop = potTop - length;
       canvas.drawLine(
         Offset(center, potTop),
@@ -481,34 +537,71 @@ class ChandelierGame extends FlameGame {
           ..color = const Color(0xFF6a8a4c)
           ..strokeWidth = 3,
       );
-      final leafCount = math.min(23, 2 + growth ~/ 2);
-      for (var i = 0; i < leafCount; i++) {
-        final azimuth = i * 2.4 + _yaw * .25 + (growth ~/ 46) * .31;
+      // Actual growth nodes remember their birth time and multi-clear vigor.
+      // The fallback also makes deterministic direct-ring art fixtures useful.
+      final leaves = model.leaves.isNotEmpty
+          ? model.leaves
+          : List.generate(
+              math.min(24, growth),
+              (i) => PlantLeaf(
+                node: i + 1,
+                bornAt: -10,
+                vigor: 1,
+                variation: .5,
+                azimuth: 0,
+              ),
+            );
+      final oldest = math.max(0, growth - 32);
+      for (var i = 0; i < leaves.length; i++) {
+        final leaf = leaves[i];
+        final opening = leaf.opening(model.elapsed);
+        final relative = leaf.node <= 8
+            ? leaf.node / math.max(12, growth)
+            : .25 +
+                  .75 *
+                      (leaf.node - oldest).clamp(0, 32) /
+                      math.min(32, growth);
+        final azimuth = leaf.node * 2.4 + leaf.azimuth + _yaw * .25;
         final side = math.sin(azimuth);
-        final y = potTop - length * (.15 + .8 * (i + 1) / leafCount);
+        final y = potTop - length * (.10 + .85 * relative.clamp(0, 1));
         final leafSize =
-            _width *
-            (.14 + .025 * math.sin(i * 1.3)) *
-            (.65 + .35 * math.min(1, growth / 12));
-        final anchor = Offset(center + side * leafSize * .72, y);
+            _width * .12 * leaf.matureScale * (.22 + .78 * opening);
+        final anchor = Offset(center + side * leafSize * .65, y);
         canvas.drawLine(
-          Offset(center, y + leafSize * .3),
+          Offset(center, y + leafSize * .2),
           anchor,
           Paint()
-            ..color = const Color(0xFF6b9155)
-            ..strokeWidth = 2,
+            ..color = const Color(0xFF789450)
+            ..strokeWidth = 1.5,
         );
-        _leaf(
-          canvas,
-          anchor,
-          leafSize,
-          side >= 0 ? 1 : -1,
-          .35 + .65 * side.abs(),
-          math.cos(azimuth) < 0,
-        );
+        canvas.save();
+        canvas.translate(anchor.dx, anchor.dy);
+        canvas.rotate((leaf.variation - .5) * .45);
+        if (opening < .18) {
+          // A tightly rolled new leaf with a light seam.
+          canvas.drawOval(
+            Rect.fromCenter(
+              center: Offset(0, -leafSize * .35),
+              width: leafSize * .18,
+              height: leafSize * .8,
+            ),
+            Paint()..color = const Color(0xFFb3d987),
+          );
+        } else {
+          _leaf(
+            canvas,
+            Offset.zero,
+            leafSize,
+            side >= 0 ? 1 : -1,
+            (.35 + .65 * side.abs()) * (.18 + .82 * opening),
+            math.cos(azimuth) < 0,
+            vigor: leaf.vigor,
+            opening: opening,
+          );
+        }
+        canvas.restore();
       }
     }
-    _pothos(canvas);
   }
 
   void _leaf(
@@ -517,8 +610,10 @@ class ChandelierGame extends FlameGame {
     double length,
     double side,
     double squash,
-    bool rear,
-  ) {
+    bool rear, {
+    double vigor = 1,
+    double opening = 1,
+  }) {
     canvas.save();
     canvas.translate(anchor.dx, anchor.dy);
     canvas.rotate(side * -.38);
@@ -531,7 +626,29 @@ class ChandelierGame extends FlameGame {
         Rect.fromLTWH(-length * .5, -length * .95, length, length),
         Paint()
           ..filterQuality = FilterQuality.none
-          ..color = Colors.white.withValues(alpha: rear ? .65 : 1),
+          ..color = Colors.white.withValues(alpha: rear ? .65 : 1)
+          ..colorFilter = ColorFilter.matrix([
+            1 + (vigor - 1) * .35,
+            0,
+            0,
+            0,
+            (1 - opening) * 10,
+            0,
+            1 + (vigor - 1) * .45,
+            0,
+            0,
+            (1 - opening) * 20,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+          ]),
       );
     } else {
       final path = Path()
@@ -557,7 +674,11 @@ class ChandelierGame extends FlameGame {
       canvas.drawPath(
         path,
         Paint()
-          ..color = rear ? const Color(0xFF28553c) : const Color(0xFF4e915a),
+          ..color = Color.lerp(
+            rear ? const Color(0xFF28553c) : const Color(0xFF4e915a),
+            const Color(0xFFb5df7a),
+            ((vigor - 1) * .5 + (1 - opening) * .3).clamp(0, 1),
+          )!,
       );
       canvas.drawLine(
         Offset.zero,
@@ -580,46 +701,17 @@ class ChandelierGame extends FlameGame {
     canvas.restore();
   }
 
-  void _pothos(Canvas canvas) {
-    final density = (model.stackDepth / 3).floor().clamp(0, 9);
-    final crownY = _project(4.5 + model.angle, -.5).dy;
-    for (var i = 0; i < density; i++) {
-      final side = i.isEven ? -1 : 1;
-      final x = size.x / 2 + side * _width * (.25 + (i % 3) * .035);
-      final length = _unit * (3 + i * 1.5);
-      final vine = Path()
-        ..moveTo(x, crownY)
-        ..quadraticBezierTo(
-          x + side * 8,
-          crownY + length * .5,
-          x - side * 4,
-          crownY + length,
-        );
-      canvas.drawPath(
-        vine,
-        Paint()
-          ..color = const Color(0xFF67874a)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
-      for (var j = 1; j < 7; j++) {
-        final y = crownY + length * j / 7;
-        final s = j.isEven ? 1.0 : -1.0;
-        final leaf = Path()
-          ..moveTo(x, y)
-          ..lineTo(x + s * 6, y - 3)
-          ..lineTo(x + s * 10, y + 1)
-          ..lineTo(x + s * 5, y + 9)
-          ..close();
-        canvas.drawPath(
-          leaf,
-          Paint()
-            ..color = j.isEven
-                ? const Color(0xFF6f9a57)
-                : const Color(0xFF3e7349),
-        );
-      }
-    }
+  void _ecology(Canvas canvas, bool front) {
+    GardenEcology.paintHalf(
+      canvas,
+      model: model,
+      clock: _clock,
+      front: front,
+      project: (column, row, {radius = 1, double? centerRow}) =>
+          _project(column, row, radius: radius, centerRow: centerRow),
+      yaw: _yaw,
+      unit: _unit,
+    );
   }
 
   void _rim(Canvas canvas, double row, bool front) {
@@ -650,27 +742,119 @@ class ChandelierGame extends FlameGame {
   }
 
   void _crown(Canvas canvas) {
+    const brass = Color(0xFFc49a61);
+    const shadow = Color(0xFF5d5540);
+    final light = _project(model.angle, -1.2, radius: 0);
+    final crownWidth = _width * .88;
+    // Keep the ornamental canopy inside the original HUD clearance without
+    // changing the cylinder projection or scaling its matching end planes.
+    final crownRise = math.min(
+      crownWidth * .34,
+      math.max(0.0, light.dy - math.max(128.0, size.y * .14) - 4),
+    );
+    final apex = light + Offset(0, -crownRise * .68);
+    // A tiered central canopy and six curved metal arms, depth ordered.
+    for (final rear in [true, false]) {
+      for (var i = 0; i < 6; i++) {
+        final column = i * 3.0;
+        final depth = math.cos(column * math.pi * 2 / 18 - _yaw);
+        if ((depth < 0) != rear) continue;
+        final azimuth = column * math.pi * 2 / 18 - _yaw;
+        final side = math.sin(azimuth);
+        final root = light + Offset(side * crownWidth * .08, -crownRise * .38);
+        final elbow = light + Offset(side * crownWidth * .40, -crownRise);
+        final tip =
+            light + Offset(side * crownWidth * .51, depth * crownWidth * .055);
+        final curl =
+            light +
+            Offset(side * crownWidth * .46, depth * crownWidth * .055 + 7);
+        final arm = Path()
+          ..moveTo(root.dx, root.dy)
+          ..quadraticBezierTo(elbow.dx, elbow.dy, tip.dx, tip.dy)
+          ..quadraticBezierTo(curl.dx, curl.dy, curl.dx + 1, curl.dy + 2);
+        canvas.drawPath(
+          arm,
+          Paint()
+            ..color = shadow
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4,
+        );
+        canvas.drawPath(
+          arm.shift(const Offset(-.5, -.5)),
+          Paint()
+            ..color = rear ? const Color(0xFF827751) : brass
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
+        canvas.drawLine(
+          tip,
+          Offset(tip.dx, tip.dy + 7),
+          Paint()
+            ..color = brass
+            ..strokeWidth = 1,
+        );
+        final gem = Path()
+          ..moveTo(tip.dx, tip.dy + 5)
+          ..lineTo(tip.dx + 2.5, tip.dy + 9)
+          ..lineTo(tip.dx, tip.dy + 14)
+          ..lineTo(tip.dx - 2.5, tip.dy + 9)
+          ..close();
+        canvas.drawPath(
+          gem,
+          Paint()..color = _cream.withValues(alpha: rear ? .40 : .85),
+        );
+      }
+    }
     _rim(canvas, -.8, false);
     _rim(canvas, -.8, true);
-    final light = _project(model.angle, -.8, radius: 0);
+    canvas.drawLine(
+      apex,
+      light,
+      Paint()
+        ..color = shadow
+        ..strokeWidth = 5,
+    );
+    canvas.drawLine(
+      apex + const Offset(-1, 0),
+      light + const Offset(-1, 0),
+      Paint()
+        ..color = brass
+        ..strokeWidth = 2,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(center: apex, width: 19, height: 5),
+      Paint()..color = brass,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(apex.dx, apex.dy + 6),
+        width: 25,
+        height: 5,
+      ),
+      Paint()..color = shadow,
+    );
     canvas.drawCircle(
       light,
-      _width * .25,
+      49,
       Paint()
-        ..shader = ui.Gradient.radial(light, _width * .25, [
+        ..shader = ui.Gradient.radial(light, 49, [
           _cream.withValues(alpha: .30),
           _cream.withValues(alpha: 0),
         ]),
     );
-    canvas.drawLine(
-      Offset(light.dx, light.dy - 19),
-      light,
-      Paint()
-        ..color = const Color(0xFFb19060)
-        ..strokeWidth = 2,
-    );
+    final shade = Path()
+      ..moveTo(light.dx - 5, light.dy - 6)
+      ..lineTo(light.dx + 5, light.dy - 6)
+      ..lineTo(light.dx + 12, light.dy + 3)
+      ..lineTo(light.dx - 12, light.dy + 3)
+      ..close();
+    canvas.drawPath(shade, Paint()..color = brass);
     canvas.drawRect(
-      Rect.fromCenter(center: light, width: 19, height: 7),
+      Rect.fromCenter(
+        center: Offset(light.dx, light.dy + 4),
+        width: 22,
+        height: 4,
+      ),
       Paint()..color = _cream,
     );
   }
@@ -686,14 +870,8 @@ class ChandelierGame extends FlameGame {
     final front = math.cos(theta) >= 0;
     final radialSign = front ? 1.0 : -1.0;
     final faceRadius = front ? 1.08 : .92;
-    List<Offset> corners(double radius) => [
-      _project(column - .43, row - .43, radius: radius, centerRow: row),
-      _project(column + .43, row - .43, radius: radius, centerRow: row),
-      _project(column + .43, row + .43, radius: radius, centerRow: row),
-      _project(column - .43, row + .43, radius: radius, centerRow: row),
-    ];
-    final back = corners(1);
-    final face = corners(faceRadius);
+    final back = _brickCorners(column, row, 1);
+    final face = _brickCorners(column, row, faceRadius);
     // World coordinates: x=R sin(theta), y grows down, z=R cos(theta).
     // All surfaces use outward normals and the same upper-left/front light.
     Color surface(double nx, double ny, double nz) {
@@ -751,12 +929,14 @@ class ChandelierGame extends FlameGame {
     }
   }
 
+  static double previewBlockSize(int index) => const [15.0, 10.0, 9.0][index];
+
   void _queue(Canvas canvas) {
     final queue = model.nextPieces;
     for (var i = 0; i < math.min(3, queue.length); i++) {
-      final scale = 5.0 - i * .7;
-      final x = size.x * .70 + i * 21;
-      final y = size.y * .765 - i * 8;
+      final scale = previewBlockSize(i);
+      final x = math.min(size.x * .82, size.x - 4 * previewBlockSize(0) - 10);
+      final y = size.y * (.62 + i * .065);
       final cells = PuzzleModel.cellsForType(queue[i]);
       for (final cell in cells) {
         canvas.drawRect(
@@ -768,7 +948,7 @@ class ChandelierGame extends FlameGame {
           ),
           Paint()
             ..color = _colors[(queue[i] - 1) % 7].withValues(
-              alpha: .58 - i * .12,
+              alpha: .86 - i * .1,
             ),
         );
       }
