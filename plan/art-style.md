@@ -195,56 +195,33 @@ tangent face from its outward normal and light every face from one upper-left,
 above/front source. Preserve filled faces and external active halos.
 
 
-## Living chandelier refinement
+## Retained chandelier refinement with original cylinder
 
-Square cell proportions are derived from the eighteen-cell circumference rather
-than viewport width. Fitting all forty-two rows therefore gives the cylinder a
-tall slender silhouette. A broad six-arm tiered brass crown, curled ends, small
-crystal pendants and warm central shaded lamp balance its scale. Preserve legible
-pot and leaf minimum sizes rather than shrinking every botanical element with
-the board radius. Active cells use the identical radial cuboid and outward-normal
-lighting as settled cells, with their glow behind the solid face.
+Restore main 413bf3b projection, cylinder width, full-board fitting and gentle stack pullback. Retain the broad six-arm brass crown, curled ends, crystal pendants and shaded warm lamp. Keep age-based rooted pothos, moss, dirt, sparse insects and butterflies. Original outward faces and grounded pot proportions remain. This supersedes the square-cell, landing-focused and upward close-up experiments.
 
-Age-based ecology paints after each rear/front occupied pass: quick crown pothos,
-roots gripping surviving occupied cells and subtle moss/dirt. Sparse insects and
-one or two butterflies usually accompany growth; a third is rare. Attachment
-age moves with compaction and removed cells retain no decoration. Draw landing
-and active silhouettes after ecology so the garden never hides input feedback.
+## Precision and growing garden refinement
 
-## Landing-focused camera (playtest revision)
+Apply a 1.10 uniform zoom to the original board scene, leaving projection, camera
+angles and aspect ratio intact. Slight edge spill is intentional. Rotation arrows
+are borderless and pulse mint on side taps; only the held-ascent control retains
+a circular contour. Space enlarged next-piece previews vertically on the right.
 
-Prioritize large square front faces over a full-height overview. The logical
-18×42 board remains intact, but the cylinder now occupies roughly two thirds of
-the phone width. Smoothly follow the mean landing row, leaving the halo near the
-center of the playable area; distant rows and the active piece can leave view.
-A gentle seven-degree diagonal tilt and slow bounded wobble reinforce depth.
-Keep the six-arm crown's ornamental proportions compact independently of the
-larger cell size. This supersedes the earlier full-board and slender-tube framing.
+Leaves retain seeded irregular scales and poses per run. Births roll up, then
+unfold over seven gameplay seconds; multi-ring births gain lasting size and light.
+Keep basal foliage plus recent growth nodes as older internodes join the canopy,
+so runs beyond thirty rings continue adding visible foliage and plant height.
 
+## Quiet garden polish
 
-## Upward ascent camera (supersedes full-height and destination-only cameras)
+Keep cylinder yaw and snap phase stable through piece rotation, including its
+subsequent settling frames. One play action and one rings table replace alternate
+entry paths and score tabs. Show absolute ring counts and no live clocks.
 
-Start just below the spawn region looking upward through the chandelier. A true
-pinhole transform projects every world row, vertex, ring and botanical anchor;
-the eye follows the active piece, never the landing target. Nearby cells remain
-large and approximately square through one global horizontal/vertical focal
-calibration. Upper rows compress into the distance. Do not stretch local faces
-independently: shared seams must stay attached. Ordinary ascent eases smoothly;
-a new piece cuts immediately back to the base. Limit follow lag to two rows.
+Blend the original panorama in separate sky, distant and near terrain passes.
+Temporal offsets remain below 1.2% of viewport width; hills and haze move slowly.
+Use a low-opacity twelve-minute tint cycle without bright flashes. Pause freezes it.
+The first queue item uses 15px blocks, with 10px and 9px followers.
 
-Near base, the pot and juvenile sprout stay attached to their world soil height.
-As the eye climbs, omit behind-eye geometry safely; plant leaves and stems each
-retain world anchors. The upward view exposes brick undersides, with unchanged
-outward radial and tangent normals. Near base rims appear larger than the crown.
-Keep the broad ornamental canopy readable independently of its thin physical
-end ring, using a compact six-arm silhouette with restrained pendants.
-
-Close-up tuning: retain the 50-degree upward pitch, but move the eye nearer
-from seven to three cells outside the wall and reduce trailing eye offset from
-six to two rows. Nearby faces are roughly twice as large; rim/side cropping is
-intentional. Keep active cells and the distant landing halo within safe bounds.
-
-Bottom-edge composition: add up to45% uniform zoom, constrained by the crown
-clearance and the active silhouette width. Anchor its bottom at101.5%screen
-height, cropping only a thin strip. Draw the board behind the translucent bottom
-controls so more of the screen shows the upper stack and receding crown.
+All active glow paints before the entire opaque piece; faces share the settled
+brick normal, lighting and depth order. Never wash neighboring solid faces with
+a later glow stroke.

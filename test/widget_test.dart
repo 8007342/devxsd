@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('phone can start, pause and resume the timed game', (
+  testWidgets('phone can start, pause and resume the combined game', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -15,9 +15,9 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const ChandelierApp());
     expect(find.text('Chandelier'), findsOneWidget);
-    await tester.tap(find.text('30-ring sprint'));
+    await tester.tap(find.text('Grow a garden'));
     await tester.pump();
-    expect(find.text('30 RING SPRINT'), findsOneWidget);
+    expect(find.text('CHANDELIER'), findsOneWidget);
     expect(find.bySemanticsLabel('Rotate clockwise'), findsOneWidget);
     expect(find.bySemanticsLabel('Hold to accelerate'), findsOneWidget);
     await tester.tap(find.byTooltip('Pause'));
@@ -30,18 +30,16 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('unlimited mode has independent heading and can return home', (
-    tester,
-  ) async {
+  testWidgets('combined game can return home', (tester) async {
     await tester.pumpWidget(const ChandelierApp());
-    await tester.tap(find.text('Endless garden'));
+    await tester.tap(find.text('Grow a garden'));
     await tester.pump();
-    expect(find.text('ENDLESS GARDEN'), findsOneWidget);
+    expect(find.text('CHANDELIER'), findsOneWidget);
     await tester.tap(find.byTooltip('Pause'));
     await tester.pump();
     await tester.tap(find.text('Back to the conservatory'));
     await tester.pump();
-    expect(find.text('30-ring sprint'), findsOneWidget);
+    expect(find.text('Grow a garden'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -53,7 +51,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(const ChandelierApp());
-      await tester.tap(find.text('30-ring sprint'));
+      await tester.tap(find.text('Grow a garden'));
       await tester.pump();
       final widget = tester.widget<GameWidget>(
         find.byWidgetPredicate((w) => w is GameWidget),
@@ -92,7 +90,7 @@ void main() {
       final resumed = model.angle;
       model.update(0.1);
       expect(
-        (model.angle - model.angle.round()).abs(),
+        (model.angle - model.activeCenterColumn).abs(),
         lessThan((resumed - resumed.round()).abs()),
       );
       expect(tester.takeException(), isNull);
@@ -108,7 +106,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(const ChandelierApp());
-      await tester.tap(find.text('30-ring sprint'));
+      await tester.tap(find.text('Grow a garden'));
       await tester.pump();
       final widget = tester.widget<GameWidget>(
         find.byWidgetPredicate((w) => w is GameWidget),
@@ -138,7 +136,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const ChandelierApp());
-    await tester.tap(find.text('30-ring sprint'));
+    await tester.tap(find.text('Grow a garden'));
     await tester.pump();
     final widget = tester.widget<GameWidget>(
       find.byWidgetPredicate((w) => w is GameWidget),

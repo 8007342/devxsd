@@ -80,7 +80,7 @@ void main() {
     model.update(0.2);
     expect(model.activeCells.first.row, lessThan(39));
   });
-  test('timed wins immediately at thirty, speed increments diminish', () {
+  test('thirty-ring milestone continues play, speed increments diminish', () {
     final model = PuzzleModel();
     model.rings = 29;
     final before = model.speed;
@@ -97,11 +97,12 @@ void main() {
     model.debugSetActive(type: 1, column: 0, row: 1);
     model.hardDrop();
     expect(model.rings, 30);
-    expect(model.finished, isTrue);
+    expect(model.finished, isFalse);
     expect(model.won, isTrue);
     final elapsed = model.elapsed;
     model.update(3);
-    expect(model.elapsed, elapsed);
+    expect(model.elapsed, greaterThan(elapsed));
+    expect(model.thirtyRingTime, elapsed);
   });
   test('blocked next spawn ends either mode without a timed win', () {
     for (final mode in GameMode.values) {
@@ -127,7 +128,8 @@ void main() {
     expect(model.bestColumn, 0);
     model.releaseSpin(0);
     model.update(0.2);
-    expect(model.angle, greaterThan(0.8));
+    expect(model.angle, .5);
+    expect(model.bestColumn, 0);
     expect(model.riseProgress, closeTo(0.6, 1e-9));
     model.reset();
     expect(model.dragging, isFalse);
@@ -302,8 +304,8 @@ void main() {
     model.releaseSpin(40);
     model.update(0.45);
     expect(model.spinVelocity, 0);
-    expect(model.angle, model.angle.roundToDouble());
-    expect(model.angle, lessThanOrEqualTo(2));
+    expect(model.angle, model.activeCenterColumn);
+    expect(model.bestColumn, 2);
     expect(
       model.activeCells.every(
         (cell) => model.board[cell.row][cell.column] == 0,

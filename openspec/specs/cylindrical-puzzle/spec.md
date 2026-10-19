@@ -6,7 +6,7 @@ Provide a mobile upward stacking puzzle around a transparent chandelier, where c
 ## Requirements
 
 ### Requirement: Upward wraparound board
-The game SHALL use 18 wrapping columns and 42 rows, spawning one of seven tetrominoes centered by its occupied-cell silhouette at the bottom and moving it upward automatically. The next three pieces SHALL appear smaller and dimmer behind the active area.
+The game SHALL use 18 wrapping columns and 42 rows with seven upward-rising tetrominoes. Three spaced upcoming pieces SHALL remain readable; the first SHALL have at least 1.5 times the block-edge length of the second, with the third smaller still.
 
 #### Scenario: Center the active silhouette
 - **WHEN** any of the seven pieces spawns or rotates in open space
@@ -19,7 +19,7 @@ The game SHALL use 18 wrapping columns and 42 rows, spawning one of seven tetrom
 - **AND** horizontal coordinates wrap across the cylinder seam
 
 ### Requirement: Cylinder movement and collisions
-Sideways dragging SHALL spin the cylinder with inertia and prompt exact column snapping. Gentle releases SHALL start snapping immediately; fast releases SHALL interrupt residual momentum and settle within half a second on an unobstructed board. Ascent SHALL continue during turning and snapping. Occupied cells SHALL block motion, with a brief visual bounce and no overlap or tunneling. The player SHALL be able to take a clear path in the opposite direction.
+Sideways dragging SHALL spin the cylinder with exact grid-anchor snapping. Gentle release SHALL preserve the selected halo column; deliberate flicks SHALL coast briefly. Piece rotation SHALL preserve cylinder yaw and snap phase across subsequent frames, except for a collision-required wall kick. Occupied cells SHALL block swept motion without overlap or tunneling. Ascent and opposite motion SHALL remain responsive.
 
 #### Scenario: Spin reaches a fixed block
 - **WHEN** cylinder motion would move the active piece through an occupied slot
@@ -32,7 +32,7 @@ Sideways dragging SHALL spin the cylinder with inertia and prompt exact column s
 - **AND** the rising piece and immediate launch remain responsive throughout
 
 ### Requirement: Piece controls and projected landing
-Left/right screen taps and unlabeled translucent rotation buttons SHALL rotate the piece. Holding the upward button SHALL accelerate ascent; releasing SHALL restore normal speed. Swiping up SHALL instantly place and lock at the halo destination using the best-aligned column at release, even during a spin.
+Side taps SHALL rotate the piece and flash the matching borderless arrow. Each gesture SHALL express only one intent: rotation, cylinder turn, or upward send; sends SHALL never rotate. Holding the contoured upward control SHALL accelerate ascent until release. An upward swipe SHALL instantly lock at the halo destination using the selected release column, even while spinning or starting over an icon.
 
 #### Scenario: Fire while spinning
 - **WHEN** the user swipes upward while the cylinder is between columns
@@ -50,7 +50,7 @@ Natural or accelerated contact SHALL allow a short lock delay for rotation and c
 - **THEN** the user has a brief opportunity to rotate or slide into a reachable gap before it locks
 
 ### Requirement: Ring clearing and growth
-A full 18-cell row SHALL clear as a ring, with a brief explosion from the completing piece around to the rear, then remaining rows below SHALL shift upward. The plant SHALL begin as a small Monstera sprout in the base pot, visible when the camera includes the base. Each ring SHALL increase its height without a fixed gameplay maximum. Remaining blocks SHALL encourage pothos to grow down from the top.
+Full 18-cell rows SHALL clear with circular effects and compact lower rows upward. A potted sprout SHALL grow without a gameplay height maximum. Leaves SHALL emerge, unfold and mature with per-run irregular sizes and poses. Multi-ring placements SHALL create larger, brighter new leaves. Uncleared blocks SHALL encourage crown pothos.
 
 #### Scenario: Clear multiple rings
 - **WHEN** a placement completes two rings
@@ -61,7 +61,7 @@ A full 18-cell row SHALL clear as a ring, with a brief explosion from the comple
 - **THEN** a small Monstera sprout is visible above the soil in the dimensional base pot alongside the spawning piece
 
 ### Requirement: Perspective botanical presentation
-The cylinder SHALL remain transparent between blocks, revealing the Monstera and rear pieces. Front blocks SHALL be larger and brighter; rear blocks smaller, dimmer and curved. Visible brick surfaces SHALL follow the camera direction. The ornate crown, dimensional base pot and plants SHALL retain coherent world placement as the camera ascends. Halos SHALL remain legible in pixel art.
+The cylinder SHALL be transparent between blocks, revealing the Monstera and rear pieces. Front blocks SHALL be larger and brighter; rear blocks smaller, dimmer and curved around the cylinder. Blocks SHALL have visible brick depth through top and side faces with separated seams. An ornate six-arm brass crown with curled arms, crystal pendants and a warm shaded lamp, dimensional pot with rim and shaded sides, active silhouette and landing halo SHALL remain legible in pixel art.
 
 #### Scenario: Turn the chandelier
 - **WHEN** the player turns the cylinder
@@ -69,71 +69,61 @@ The cylinder SHALL remain transparent between blocks, revealing the Monstera and
 - **AND** subtle camera parallax reinforces depth without large camera swings
 
 ### Requirement: Responsive camera and controls
-Portrait controls SHALL occupy the bottom 20 percent as translucent icons over the board. The upward camera SHALL follow the active piece smoothly, with its recognizable silhouette crossing the bottom screen edge. Nearby cells SHALL stay large; sides MAY spill beyond view. The crown, upper stack and landing halo SHALL remain readable. New spawns SHALL immediately restore the base view. Camera motion SHALL remain bounded.
+Portrait controls SHALL occupy the bottom 20 percent. The original inclined cylinder SHALL retain its 1.10 uniform zoom, aspect ratio and angles, allowing slight edge spill. The live HUD SHALL show absolute counts such as 27 Rings and plant height, without elapsed clocks, milestone clocks or target fractions. Controls and halos SHALL remain readable.
 
-#### Scenario: Begin an ascent
-- **WHEN** a new run begins
-- **THEN** the spawning silhouette is recognizable at the bottom edge below the receding upper board; the base may lie outside the close-up
-- **AND** the upward view communicates depth rather than just rotating a flat image
-
-#### Scenario: Follow the piece toward the stack
-- **WHEN** the piece rises naturally or with held acceleration
-- **THEN** the camera follows without losing it behind the HUD or controls
-- **AND** nearby cells stay large while the landing area and upper rows recede in perspective
-
-#### Scenario: Lock and immediately play again
-- **WHEN** an instant launch or natural lock spawns the next piece
-- **THEN** the base view returns immediately so the player can act without waiting through a long camera sweep
+#### Scenario: Stack fills the board
+- **WHEN** occupied rows extend toward the bottom
+- **THEN** the view subtly pulls outward while preserving the original viewing angles and uniform zoom
 
 ### Requirement: Modes and difficulty
-Timed mode SHALL finish immediately on clearing 30 rings and rank successful completion times ascending. Unlimited SHALL continue until blocked spawning and rank plant heights descending. Blocked spawning SHALL end either run. Speed SHALL start at a familiar introductory pace and increase logarithmically with cleared rings.
+The UI SHALL offer one combined growing game. It SHALL capture the first-thirty-ring time internally and continue until blocked spawning, preserving time for results without showing a live clock. Rings, plant height and difficulty SHALL keep increasing. Speed SHALL rise logarithmically with cleared rings.
 
 #### Scenario: Finish timed mode
-- **WHEN** a timed placement reaches or exceeds 30 cleared rings
-- **THEN** the timer stops immediately and the result is eligible for the timed leaderboard
+- **WHEN** a placement reaches or exceeds 30 cleared rings
+- **THEN** the first-thirty time is saved once, the result qualifies for time ranking, and play continues until blocked spawning
 
 #### Scenario: Blocked spawn
 - **WHEN** a new piece cannot occupy its bottom spawn position
 - **THEN** the run ends; an incomplete timed run is not eligible for fastest completion ranking
 
 ### Requirement: Top ten persistence
-Each mode SHALL show a top ten with three-letter names. Shared results SHALL persist through a leaderboard API, with locally persisted fallback when the API is unavailable and an honest indication of which board is shown.
+One top-ten table SHALL rank completed runs by total rings descending, with height and elapsed duration as tie breakers. It SHALL show same-run 30 Rings time or dash, Rings count and Monstera height. The UI SHALL offer no alternate scoreboard tabs. Existing shared and local records SHALL remain readable, and fallback SHALL identify its source.
 
 #### Scenario: Record a result
 - **WHEN** an eligible run ends and the player submits three letters
-- **THEN** the result is stored and the best ten for the selected mode are displayed in ranking order
+- **THEN** the result is stored and the best ten for the combined garden are displayed in ranking order
 
 #### Scenario: Offline preview
 - **WHEN** the shared API is unavailable
 - **THEN** results remain available locally and the interface identifies the board as local
 
 ### Requirement: Night landscape parallax
-The game SHALL show a bundled pixel-art night landscape behind the cylinder, with sky, distant terrain and nearer silhouettes moving gently at different rates as the cylinder turns. The backdrop SHALL preserve gameplay contrast and require no external runtime image source.
+The bundled panorama SHALL form independently moving sky, distant terrain and near terrain layers with soft transitions. Slow bounded motion and a subdued twelve-minute night/dawn/day/dusk tint cycle SHALL continue without input. Motion SHALL remain weaker than gameplay and freeze on pause. No external asset fetch SHALL be required.
 
 #### Scenario: Spin against the night landscape
 - **WHEN** the player spins the cylinder
 - **THEN** background layers shift gently at different depths while the board, halos and plants remain legible
 
 ### Requirement: Keyboard controls
-Left arrow SHALL turn the cylinder right one column; Right arrow SHALL turn it left one column. Up and Down arrows SHALL rotate the piece counterclockwise and clockwise respectively. Space SHALL instantly launch and lock. Keyboard input SHALL provide no controlled ascent acceleration.
+Left/Right arrows SHALL turn the cylinder right/left by exactly one reachable grid anchor per key event, regardless of shape rotation, fractional angle, pending snap or seam. Occupied cells SHALL block movement rather than skip columns. Up/Down SHALL rotate counterclockwise/clockwise and flash the matching icon. Space SHALL instantly launch and lock. Keyboard input SHALL not accelerate ascent.
 
 #### Scenario: Play with a keyboard
 - **WHEN** a player presses Up, Down, Left, Right or Space
 - **THEN** the corresponding rotation, column shift or immediate launch occurs without enabling soft ascent acceleration
 
 ### Requirement: Consistent cylinder end planes
-The crown and base SHALL use the same upward-view perspective. Their apparent size SHALL reflect distance rather than independent end-ring tilts. The base SHALL remain attached to the spawn rows and the crown to the upper rows as the camera travels.
+The crown and base SHALL share a coherent shallow plane projection. The base SHALL appear flat relative to the crown rather than expanding into a steep independently tilted ellipse. Rear bricks SHALL retain depth scaling without stretching either end ring.
 
-#### Scenario: Look from the base toward the crown
-- **WHEN** a run starts
-- **THEN** the nearby base appears larger than the distant crown, with both projected by the same camera
+#### Scenario: Compare cylinder ends while turning
+- **WHEN** the cylinder rotates at any board position
+- **THEN** crown and base retain matching shallow projected profiles and remain connected to their corresponding grid rows
 
 ### Requirement: Solid brick face orientation
-Bricks SHALL remain solid through the upward view, turning and ascent. Front blocks SHALL expose their outward radial face, rear blocks their inward face, and visible bottom or side surfaces SHALL use outward normals and consistent lighting. Active halos SHALL remain outside opaque solid faces.
+Active and settled bricks SHALL share outward radial and tangent face selection and one lighting model. Active cells SHALL be depth ordered and all active glow SHALL paint before all opaque solids, preventing hollow or inverted-looking faces. Front cells SHALL show their outer face and rear cells their inner face, with filled faces and separated seams.
 
-#### Scenario: Inspect bricks from below
-- **WHEN** the camera looks upward from below the active piece
-- **THEN** exposed undersides and tangent faces read as filled solid volume rather than hollow boxes
+#### Scenario: Turn bricks across the front and rear
+- **WHEN** settled or active bricks rotate around either side of the cylinder
+- **THEN** their visible faces and edge shading remain consistent with solid volume
 
 ### Requirement: Grounded pot and gentle camera motion
 The pot SHALL begin close to the cylinder base, centered on its axis. The camera SHALL vary its viewing angle very slowly with small bounded motion, preserving readable controls, centered pieces and coherent crown/base profiles.
@@ -145,15 +135,6 @@ The pot SHALL begin close to the cylinder base, centered on its axis. The camera
 #### Scenario: Watch an idle view
 - **WHEN** the cylinder is not being turned
 - **THEN** its camera angle changes gently over a long cycle without rapid wobble or large swings
-
-### Requirement: Square dimensional cells
-Front-meridian cells near the active piece SHALL remain approximately square and large. Distant cells SHALL shrink and foreshorten with perspective; rear cells SHALL stay smaller and dimmer. Active and settled pieces SHALL share solid outward face geometry and lighting. The logical board SHALL remain 18 wrapping columns by 42 rows.
-
-#### Scenario: Inspect local and distant cells
-- **WHEN** the camera follows an active piece
-- **THEN** nearby front faces remain near-square and the upper stack visibly recedes
-- **AND** adjacent row faces retain coherent seams without compensation-induced overlap
-
 ### Requirement: Living chandelier ecology
 The crown SHALL have layered dimensional ornamental supports and warm central illumination. Accumulated blocks SHALL encourage quickly growing pothos hanging from the crown, roots attached to occupied pieces, and subtle dirt and moss increasing with settled age. Cleared cells SHALL lose their attached dirt and roots. Foliage SHALL preserve gameplay visibility.
 

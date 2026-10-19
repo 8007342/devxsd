@@ -20,6 +20,11 @@ The crown and base SHALL use the same upward-view perspective. Their apparent si
 - **WHEN** a run starts
 - **THEN** the nearby base appears larger than the distant crown, with both projected by the same camera
 
+
+#### Scenario: Compare cylinder ends while turning
+- **WHEN** the cylinder rotates at any board position
+- **THEN** crown and base retain matching shallow projected profiles and remain connected to their corresponding grid rows
+
 ### Requirement: Responsive camera and controls
 Portrait controls SHALL occupy the bottom 20 percent as translucent icons. The camera SHALL start near the base looking upward, showing the spawning piece and base, then follow the active piece smoothly through ascent. Perspective SHALL compress distant rows while keeping the local play area large. The landing halo and relevant stack ahead SHALL remain readable. New spawns SHALL regain a usable base view immediately. Camera motion SHALL remain bounded on phones and desktops.
 
@@ -36,6 +41,11 @@ Portrait controls SHALL occupy the bottom 20 percent as translucent icons. The c
 #### Scenario: Lock and immediately play again
 - **WHEN** an instant launch or natural lock spawns the next piece
 - **THEN** the base view returns immediately so the player can act without waiting through a long camera sweep
+
+
+#### Scenario: Stack fills the board
+- **WHEN** occupied rows extend toward the bottom
+- **THEN** the view subtly pulls outward while the entire inclined board remains visible
 
 ### Requirement: Ring clearing and growth
 A full 18-cell row SHALL clear as a ring, with a brief explosion from the completing piece around to the rear, then remaining rows below SHALL shift upward. The plant SHALL begin as a small Monstera sprout in the base pot, visible when the camera includes the base. Each ring SHALL increase its height without a fixed gameplay maximum. Remaining blocks SHALL encourage pothos to grow down from the top.

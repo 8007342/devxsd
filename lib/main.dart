@@ -42,6 +42,8 @@ class GardenScreen extends StatefulWidget {
   State<GardenScreen> createState() => _GardenScreenState();
 }
 
+enum _GestureIntent { pending, turn, send }
+
 class _GardenScreenState extends State<GardenScreen> {
   final PuzzleModel model = PuzzleModel();
   final LeaderboardRepository repository = LeaderboardRepository();
@@ -58,13 +60,19 @@ class _GardenScreenState extends State<GardenScreen> {
   bool submitted = false;
   String? boardError;
   LeaderboardTable? table;
-  GameMode boardMode = GameMode.timed;
+  static const boardMode = GameMode.unlimited;
   int? activePointer;
   Offset? down;
   Offset? last;
   DateTime? lastDragTime;
   double dragVelocity = 0;
-  bool dragged = false;
+  _GestureIntent intent = _GestureIntent.pending;
+  double maximumTravel = 0;
+  int? holdPointer;
+  bool ascentGesture = false;
+  DateTime? touchStarted;
+  int rotationFlash = 0;
+  Timer? flashTimer;
   double playWidth = 400;
 
   @override
@@ -78,7 +86,7 @@ class _GardenScreenState extends State<GardenScreen> {
         model.releaseSpin(0);
         model.softDrop = false;
         game.pauseEngine();
-        _loadBoard(model.mode);
+        _loadBoard();
       }
       setState(() {});
     });
@@ -87,6 +95,7 @@ class _GardenScreenState extends State<GardenScreen> {
   @override
   void dispose() {
     pulse?.cancel();
+    flashTimer?.cancel();
     focus.dispose();
     initials.dispose();
     game.pauseEngine();
@@ -127,9 +136,9 @@ class _GardenScreenState extends State<GardenScreen> {
 
   bool get canPlay => started && !paused && !results && !showBoard;
 
-  Future<void> _loadBoard(GameMode mode) async {
+  Future<void> _loadBoard() async {
+    const mode = boardMode;
     setState(() {
-      boardMode = mode;
       table = null;
       boardError = null;
     });
@@ -147,12 +156,13 @@ class _GardenScreenState extends State<GardenScreen> {
     final submittedRun = runId;
     setState(() => saving = true);
     try {
-      final loaded = await repository.submit(
-        model.mode,
+      final loaded = await repository.submitRun(
+        boardMode,
         name,
         model.elapsed,
         model.rings,
         model.plantHeight.toDouble(),
+        model.thirtyRingTime,
       );
       if (mounted && submittedRun == runId) {
         setState(() {
@@ -180,15 +190,13 @@ class _GardenScreenState extends State<GardenScreen> {
     final key = event.logicalKey;
     if (event is KeyDownEvent || event is KeyRepeatEvent) {
       if (key == LogicalKeyboardKey.arrowLeft) {
-        model.dragColumns(-1);
-        model.releaseSpin(0);
+        model.shiftColumn(-1);
       } else if (key == LogicalKeyboardKey.arrowRight) {
-        model.dragColumns(1);
-        model.releaseSpin(0);
+        model.shiftColumn(1);
       } else if (key == LogicalKeyboardKey.arrowUp) {
-        model.rotatePiece(-1);
+        _rotate(-1);
       } else if (key == LogicalKeyboardKey.arrowDown) {
-        model.rotatePiece(1);
+        _rotate(1);
       } else if (key == LogicalKeyboardKey.space) {
         model.hardDrop();
       } else {
@@ -198,41 +206,72 @@ class _GardenScreenState extends State<GardenScreen> {
     return KeyEventResult.handled;
   }
 
+  void _rotate(int direction) {
+    if (!canPlay) return;
+    model.rotatePiece(direction);
+    flashTimer?.cancel();
+    setState(() => rotationFlash = direction);
+    flashTimer = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) setState(() => rotationFlash = 0);
+    });
+  }
+
   void _clearPointer() {
     activePointer = null;
     down = last = null;
-    dragged = false;
+    intent = _GestureIntent.pending;
+    maximumTravel = 0;
     dragVelocity = 0;
+    holdPointer = null;
+    ascentGesture = false;
+    model.softDrop = false;
   }
 
   void _pointerDown(PointerDownEvent event) {
     if (!canPlay || activePointer != null) return;
     activePointer = event.pointer;
     down = last = event.localPosition;
-    dragged = false;
+    ascentGesture = holdPointer == event.pointer;
+    intent = _GestureIntent.pending;
+    maximumTravel = 0;
     dragVelocity = 0;
-    lastDragTime = DateTime.now();
+    touchStarted = lastDragTime = DateTime.now();
+    // Touching the board stops any old coast before a new precise gesture.
+    model.beginDrag();
     focus.requestFocus();
   }
 
   void _pointerMove(PointerMoveEvent event) {
     if (!canPlay || down == null || event.pointer != activePointer) return;
     final offset = event.localPosition - down!;
-    if (offset.dx.abs() > 10 && offset.dx.abs() > offset.dy.abs() * 1.15) {
-      if (!dragged) model.beginDrag();
-      dragged = true;
+    maximumTravel = maximumTravel > offset.distance
+        ? maximumTravel
+        : offset.distance;
+    if (maximumTravel > 12) model.softDrop = false;
+    if (intent == _GestureIntent.pending) {
+      if (offset.dy < -12 && -offset.dy > offset.dx.abs() * 1.1) {
+        intent = _GestureIntent.send;
+      } else if (offset.dx.abs() > 12 &&
+          offset.dx.abs() > offset.dy.abs() * 1.35) {
+        intent = _GestureIntent.turn;
+      }
     }
-    if (dragged) {
-      final now = DateTime.now();
-      final seconds = (now.difference(lastDragTime!).inMicroseconds / 1e6)
-          .clamp(0.008, 0.1);
-      final columns = -(event.localPosition.dx - last!.dx) / playWidth * 12;
-      model.dragColumns(columns);
-      dragVelocity = (dragVelocity * 0.35 + columns / seconds * 0.65).clamp(
-        -32,
-        32,
-      );
-      lastDragTime = now;
+    if (intent == _GestureIntent.turn) {
+      // A deliberate upward finish may send after a turn, never tap-rotate.
+      if (offset.dy < -35 && -offset.dy > offset.dx.abs() * 1.3) {
+        intent = _GestureIntent.send;
+      } else {
+        final now = DateTime.now();
+        final seconds = (now.difference(lastDragTime!).inMicroseconds / 1e6)
+            .clamp(.008, .1);
+        final columns = -(event.localPosition.dx - last!.dx) / playWidth * 12;
+        model.dragColumns(columns);
+        dragVelocity = (dragVelocity * .25 + columns / seconds * .75).clamp(
+          -32,
+          32,
+        );
+        lastDragTime = now;
+      }
     }
     last = event.localPosition;
   }
@@ -240,14 +279,24 @@ class _GardenScreenState extends State<GardenScreen> {
   void _pointerUp(PointerUpEvent event) {
     if (!canPlay || down == null || event.pointer != activePointer) return;
     final delta = event.localPosition - down!;
-    if (dragged) {
-      final stale =
-          DateTime.now().difference(lastDragTime!).inMilliseconds > 100;
-      model.releaseSpin(stale ? 0 : dragVelocity);
-    } else if (delta.dy < -35 && delta.dy.abs() > delta.dx.abs()) {
+    final upward = delta.dy < -35 && -delta.dy > delta.dx.abs() * 1.1;
+    if (upward || (intent == _GestureIntent.send && delta.dy < -28)) {
+      model.releaseSpin(0);
       model.hardDrop();
-    } else if (delta.distance < 14) {
-      model.rotatePiece(event.localPosition.dx < playWidth / 2 ? -1 : 1);
+    } else if (intent == _GestureIntent.turn) {
+      final stale =
+          DateTime.now().difference(lastDragTime!).inMilliseconds > 70;
+      final flick = !stale && delta.dx.abs() > 55 && dragVelocity.abs() > 12;
+      model.releaseSpin(flick ? dragVelocity : 0);
+    } else {
+      model.releaseSpin(0);
+      if (!ascentGesture &&
+          intent == _GestureIntent.pending &&
+          maximumTravel < 12 &&
+          delta.distance < 12 &&
+          DateTime.now().difference(touchStarted!).inMilliseconds < 400) {
+        _rotate(event.localPosition.dx < playWidth / 2 ? -1 : 1);
+      }
     }
     _clearPointer();
   }
@@ -290,11 +339,16 @@ class _GardenScreenState extends State<GardenScreen> {
                                 model.releaseSpin(0);
                               }
                             },
-                            child: GameWidget(game: game),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(child: GameWidget(game: game)),
+                                if (canPlay)
+                                  _controls(constraints.maxHeight * .20),
+                              ],
+                            ),
                           ),
                         ),
                         if (started && !showBoard) _hud(),
-                        if (canPlay) _controls(constraints.maxHeight * 0.20),
                         if (!started && !showBoard) _welcome(),
                         if (paused && !showBoard) _pauseCard(),
                         if (results && !showBoard) _resultsCard(),
@@ -322,9 +376,7 @@ class _GardenScreenState extends State<GardenScreen> {
             const Icon(Icons.spa_outlined, size: 18, color: _mint),
             const SizedBox(width: 8),
             Text(
-              model.mode == GameMode.timed
-                  ? '30 RING SPRINT'
-                  : 'ENDLESS GARDEN',
+              'CHANDELIER',
               style: const TextStyle(
                 fontSize: 10,
                 letterSpacing: 2,
@@ -347,11 +399,7 @@ class _GardenScreenState extends State<GardenScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _metric(
-              'RINGS',
-              '${model.rings}${model.mode == GameMode.timed ? ' / 30' : ''}',
-            ),
-            _metric('TIME', _clock(model.elapsed)),
+            _metric('GARDEN', '${model.rings} Rings'),
             _metric('GROWTH', '${model.plantHeight.toStringAsFixed(0)} cm'),
           ],
         ),
@@ -359,9 +407,7 @@ class _GardenScreenState extends State<GardenScreen> {
         ClipRRect(
           borderRadius: BorderRadius.circular(2),
           child: LinearProgressIndicator(
-            value: model.mode == GameMode.timed
-                ? (model.rings / 30).clamp(0, 1)
-                : model.occupancy,
+            value: model.occupancy,
             minHeight: 2,
             backgroundColor: _cream.withValues(alpha: 0.08),
             color: _mint.withValues(alpha: 0.65),
@@ -416,7 +462,7 @@ class _GardenScreenState extends State<GardenScreen> {
               _control(
                 Icons.rotate_left_rounded,
                 'Rotate counterclockwise',
-                () => model.rotatePiece(-1),
+                () => _rotate(-1),
               ),
               _control(
                 Icons.keyboard_double_arrow_up_rounded,
@@ -427,7 +473,7 @@ class _GardenScreenState extends State<GardenScreen> {
               _control(
                 Icons.rotate_right_rounded,
                 'Rotate clockwise',
-                () => model.rotatePiece(1),
+                () => _rotate(1),
               ),
             ],
           ),
@@ -450,33 +496,56 @@ class _GardenScreenState extends State<GardenScreen> {
     String label,
     VoidCallback? action, {
     bool hold = false,
-  }) => Semantics(
-    label: label,
-    button: true,
-    child: Listener(
-      onPointerDown: hold ? (_) => setState(() => model.softDrop = true) : null,
-      onPointerUp: hold ? (_) => setState(() => model.softDrop = false) : null,
-      onPointerCancel: hold
-          ? (_) => setState(() => model.softDrop = false)
-          : null,
-      child: GestureDetector(
-        onTap: action,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: hold ? 76 : 62,
-          height: hold ? 76 : 62,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: (hold && model.softDrop ? _mint : _cream).withValues(
-              alpha: hold && model.softDrop ? 0.18 : 0.06,
-            ),
-            border: Border.all(color: _cream.withValues(alpha: 0.22)),
-          ),
-          child: Icon(icon, size: hold ? 38 : 29, color: _cream),
-        ),
+  }) {
+    final direction = icon == Icons.rotate_left_rounded ? -1 : 1;
+    final lit = hold ? model.softDrop : rotationFlash == direction;
+    final visual = AnimatedContainer(
+      key: ValueKey(hold ? 'ascent-control' : 'rotation-$direction'),
+      duration: const Duration(milliseconds: 90),
+      width: hold ? 76 : 62,
+      height: hold ? 76 : 62,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: hold
+            ? (lit ? _mint : _cream).withValues(alpha: lit ? .18 : .06)
+            : Colors.transparent,
+        border: hold ? Border.all(color: _cream.withValues(alpha: .22)) : null,
       ),
-    ),
-  );
+      child: Icon(
+        icon,
+        size: hold ? 38 : (lit ? 34 : 29),
+        color: lit ? _mint : _cream,
+        shadows: lit
+            ? [Shadow(color: _mint.withValues(alpha: .8), blurRadius: 16)]
+            : null,
+      ),
+    );
+    return Semantics(
+      label: label,
+      button: true,
+      onTap: action,
+      child: hold
+          ? Listener(
+              onPointerDown: (event) {
+                if (!canPlay || activePointer != null) return;
+                holdPointer = event.pointer;
+                setState(() => model.softDrop = true);
+              },
+              onPointerUp: (event) {
+                if (holdPointer == event.pointer) {
+                  setState(() => model.softDrop = false);
+                }
+              },
+              onPointerCancel: (event) {
+                if (holdPointer == event.pointer) {
+                  setState(() => model.softDrop = false);
+                }
+              },
+              child: visual,
+            )
+          : IgnorePointer(child: visual),
+    );
+  }
 
   Widget _sheet(Widget child) => Positioned.fill(
     child: ColoredBox(
@@ -522,7 +591,7 @@ class _GardenScreenState extends State<GardenScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          'Send pieces toward the light.\nClear a ring. Make room to grow.',
+          'Send pieces toward the light.\nMake room for your garden to grow.',
           style: TextStyle(
             fontSize: 13,
             height: 1.8,
@@ -531,16 +600,10 @@ class _GardenScreenState extends State<GardenScreen> {
         ),
         const SizedBox(height: 27),
         _button(
-          '30-ring sprint',
-          () => _start(GameMode.timed),
-          primary: true,
-          icon: Icons.north_rounded,
-        ),
-        const SizedBox(height: 10),
-        _button(
-          'Endless garden',
+          'Grow a garden',
           () => _start(GameMode.unlimited),
-          icon: Icons.all_inclusive,
+          primary: true,
+          icon: Icons.spa_outlined,
         ),
         const SizedBox(height: 20),
         const Divider(color: Color(0xff2c484a)),
@@ -558,7 +621,7 @@ class _GardenScreenState extends State<GardenScreen> {
           onPressed: () {
             setState(() => showBoard = true);
             game.pauseEngine();
-            _loadBoard(GameMode.timed);
+            _loadBoard();
           },
           child: const Text(
             'THE TOP TEN',
@@ -592,14 +655,14 @@ class _GardenScreenState extends State<GardenScreen> {
   );
 
   Widget _resultsCard() {
-    final eligible = model.mode == GameMode.unlimited || model.won;
+    const eligible = true;
     return _sheet(
       Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            model.won ? 'THIRTY RINGS OF LIGHT' : 'THE GARDEN RESTS',
+            'THE GARDEN RESTS',
             style: const TextStyle(fontSize: 9, letterSpacing: 2, color: _mint),
           ),
           const SizedBox(height: 12),
@@ -609,7 +672,7 @@ class _GardenScreenState extends State<GardenScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            '${model.rings} rings  ·  ${_clock(model.elapsed)}  ·  ${model.plantHeight.toStringAsFixed(0)} cm',
+            '30 Rings: ${model.thirtyRingTime == null ? '—' : _clock(model.thirtyRingTime!)}\nRings: ${model.rings}  ·  Monstera: ${model.plantHeight.toStringAsFixed(0)} cm',
             style: const TextStyle(fontSize: 12, color: _mint),
           ),
           const SizedBox(height: 20),
@@ -659,7 +722,7 @@ class _GardenScreenState extends State<GardenScreen> {
           TextButton(
             onPressed: () {
               setState(() => showBoard = true);
-              _loadBoard(model.mode);
+              _loadBoard();
             },
             child: const Text('View the top ten'),
           ),
@@ -680,22 +743,6 @@ class _GardenScreenState extends State<GardenScreen> {
         const SizedBox(height: 12),
         const Text('Growing legends', style: TextStyle(fontSize: 27)),
         const SizedBox(height: 18),
-        Row(
-          children: [
-            ChoiceChip(
-              label: const Text('30 rings'),
-              selected: boardMode == GameMode.timed,
-              onSelected: (_) => _loadBoard(GameMode.timed),
-            ),
-            const SizedBox(width: 8),
-            ChoiceChip(
-              label: const Text('Endless'),
-              selected: boardMode == GameMode.unlimited,
-              onSelected: (_) => _loadBoard(GameMode.unlimited),
-            ),
-          ],
-        ),
-        const SizedBox(height: 17),
         if (table == null && boardError == null)
           const Padding(
             padding: EdgeInsets.all(20),
@@ -720,35 +767,49 @@ class _GardenScreenState extends State<GardenScreen> {
                 style: TextStyle(fontSize: 12),
               ),
             ),
-          for (var i = 0; i < table!.entries.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Row(
+          Table(
+            columnWidths: const {
+              0: FlexColumnWidth(.8),
+              1: FlexColumnWidth(1.3),
+              2: FlexColumnWidth(.7),
+              3: FlexColumnWidth(1),
+            },
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [
+              const TableRow(
                 children: [
-                  SizedBox(
-                    width: 30,
-                    child: Text(
-                      '${i + 1}'.padLeft(2, '0'),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: _cream.withValues(alpha: 0.4),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    table!.entries[i].name,
-                    style: const TextStyle(fontSize: 14, letterSpacing: 3),
-                  ),
-                  const Spacer(),
-                  Text(
-                    boardMode == GameMode.timed
-                        ? _clock(table!.entries[i].seconds)
-                        : '${table!.entries[i].height.toStringAsFixed(0)} cm',
-                    style: const TextStyle(fontSize: 13, color: _mint),
-                  ),
+                  Text(''),
+                  Text('30 Rings', style: TextStyle(fontSize: 10)),
+                  Text('Rings', style: TextStyle(fontSize: 10)),
+                  Text('Monstera', style: TextStyle(fontSize: 10)),
                 ],
               ),
-            ),
+              for (final entry in table!.entries)
+                TableRow(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        entry.name,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    Text(
+                      entry.time30 != null ? _clock(entry.time30!) : '—',
+                      style: const TextStyle(fontSize: 11, color: _mint),
+                    ),
+                    Text(
+                      '${entry.rings}',
+                      style: const TextStyle(fontSize: 11, color: _mint),
+                    ),
+                    Text(
+                      '${entry.height.toStringAsFixed(0)} cm',
+                      style: const TextStyle(fontSize: 11, color: _mint),
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ],
         const SizedBox(height: 20),
         _button('Back', () {

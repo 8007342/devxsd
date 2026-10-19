@@ -2,6 +2,23 @@ import 'dart:math' as math;
 
 enum GameMode { timed, unlimited }
 
+class PlantLeaf {
+  const PlantLeaf({
+    required this.node,
+    required this.bornAt,
+    required this.vigor,
+    required this.variation,
+    required this.azimuth,
+  });
+  final int node;
+  final double bornAt;
+  final double vigor;
+  final double variation;
+  final double azimuth;
+  double opening(double elapsed) => ((elapsed - bornAt) / 7).clamp(0.0, 1.0);
+  double get matureScale => (.80 + variation * .4) * vigor;
+}
+
 class GridCell {
   const GridCell(this.column, this.row);
   final int column;
@@ -41,15 +58,19 @@ class PuzzleModel {
   double spinVelocity = 0;
   double _progress = 0;
   bool _dragging = false;
-  int _lastTurn = 1;
   double _coastTime = 0;
   double? _snapTarget;
+  double _snapPhase = 0;
   double contactTime = 0;
   int _resets = 0;
   int rings = 0;
   double elapsed = 0;
   bool finished = false;
-  bool won = false;
+  bool get won => thirtyRingTime != null;
+  double? thirtyRingTime;
+  int gardenSeed = 0;
+  final List<PlantLeaf> leaves = [];
+  double get stemRows => 3 + 34 * (1 - math.exp(-rings / 55));
   bool softDrop = false;
   List<int> lastClearedRows = [];
   int clearSerial = 0;
@@ -92,8 +113,7 @@ class PuzzleModel {
     return (xs.reduce(math.min) + xs.reduce(math.max)) / 2;
   }
 
-  int _nearest(double value) =>
-      (value + 0.5 - (_lastTurn < 0 ? 1e-9 : 0)).floor();
+  int _nearest(double value) => (value + 0.5).floor();
   static int wrap(int column) => column % columns;
   static const _shapes = [
     [
@@ -192,10 +212,11 @@ class PuzzleModel {
     rings = 0;
     elapsed = 0;
     finished = false;
-    won = false;
+    thirtyRingTime = null;
+    gardenSeed = _random.nextInt(1 << 30);
+    leaves.clear();
     softDrop = false;
     _dragging = false;
-    _lastTurn = 1;
     angle = 0;
     spinVelocity = 0;
     collisionBounce = 0;
@@ -210,6 +231,7 @@ class PuzzleModel {
     activeType = _queue.removeAt(0);
     _queue.add(_draw());
     _rotation = 0;
+    _snapPhase = angle - angle.floorToDouble();
     _row = rows - 2;
     _progress = 0;
     contactTime = 0;
@@ -260,7 +282,6 @@ class PuzzleModel {
     if (finished || !delta.isFinite) return;
     final target = angle + delta;
     final start = _column;
-    if (delta != 0) _lastTurn = delta > 0 ? 1 : -1;
     final end = _nearest(target - activeCenterOffset);
     final direction = end >= start ? 1 : -1;
     for (
@@ -293,37 +314,43 @@ class PuzzleModel {
     _coastTime = 0;
     if (!finished && velocity.isFinite) {
       spinVelocity = velocity.clamp(-40, 40);
-      if (spinVelocity.abs() <= 3) _beginSnap();
+      if (spinVelocity.abs() <= 10) _beginSnap();
     }
+  }
+
+  // The cylinder lattice has a stable phase for this piece. Changing the
+  // occupied width on rotation must not replace that phase with a half-step.
+  double _snapAngleFor(int anchor) {
+    final center = anchor + activeCenterOffset;
+    final base = (center - _snapPhase).floor();
+    final candidates = [
+      for (var step = -1; step <= 2; step++) base + step + _snapPhase,
+    ]..sort((a, b) => (a - angle).abs().compareTo((b - angle).abs()));
+    return candidates.firstWhere(
+      (candidate) => _nearest(candidate - activeCenterOffset) == anchor,
+    );
   }
 
   void _beginSnap() {
     spinVelocity = 0;
-    final nearest = _nearest(angle);
-    final candidates = [nearest, nearest - 1, nearest + 1]
-      ..sort((a, b) => (a - angle).abs().compareTo((b - angle).abs()));
-    for (final target in candidates) {
-      final direction = target == angle ? _lastTurn : (target > angle ? 1 : -1);
-      final anchor =
-          (target - activeCenterOffset + 0.5 - (direction < 0 ? 1e-9 : 0))
-              .floor();
-      var reachable = _fits(anchor, _row, _rotation);
-      final start = _column;
-      final columnDirection = anchor >= start ? 1 : -1;
-      for (
-        var column = start + columnDirection;
-        reachable &&
-            (columnDirection > 0 ? column <= anchor : column >= anchor);
-        column += columnDirection
-      ) {
-        reachable = _fits(column, _row, _rotation);
-      }
-      if (reachable) {
-        _snapTarget = target.toDouble();
-        return;
-      }
-    }
+    _snapTarget = _snapAngleFor(_column);
+  }
+
+  /// Discrete input owns the selected grid anchor, even during a pending snap.
+  void shiftColumn(int direction) {
+    if (finished || direction == 0) return;
+    final target = _column + direction.sign;
+    _dragging = false;
+    spinVelocity = 0;
+    _coastTime = 0;
     _snapTarget = null;
+    if (_fits(target, _row, _rotation)) {
+      angle = _snapAngleFor(target);
+      _adjusted();
+    } else {
+      angle = _snapAngleFor(_column);
+      collisionBounce = -direction.sign * .12;
+    }
   }
 
   void update(double dt) {
@@ -349,12 +376,12 @@ class PuzzleModel {
         } else if ((_snapTarget! - angle).abs() < 1e-9) {
           _snapTarget = null;
         }
-      } else if (spinVelocity.abs() > 3 && _coastTime < 0.30) {
+      } else if (spinVelocity.abs() > 10 && _coastTime < 0.30) {
         _moveColumns(spinVelocity * step);
         spinVelocity *= math.exp(-3 * step);
         _coastTime += step;
-        if (spinVelocity.abs() <= 3 || _coastTime >= 0.30) _beginSnap();
-      } else if (spinVelocity != 0 || angle != _nearest(angle).toDouble()) {
+        if (spinVelocity.abs() <= 10 || _coastTime >= 0.30) _beginSnap();
+      } else if (spinVelocity != 0 || angle != _snapAngleFor(_column)) {
         _beginSnap();
       }
       if (_fits(_column, _row - 1, _rotation)) {
@@ -374,6 +401,9 @@ class PuzzleModel {
 
   void hardDrop() {
     if (finished) return;
+    _dragging = false;
+    spinVelocity = 0;
+    _snapTarget = null;
     while (_fits(_column, _row - 1, _rotation)) {
       _row--;
     }
@@ -411,13 +441,27 @@ class PuzzleModel {
         board[r].setAll(0, remaining[r]);
         _settledAt[r].setAll(0, remainingAges[r]);
       }
-      rings += lastClearedRows.length;
+      final count = lastClearedRows.length;
+      for (var i = 0; i < count; i++) {
+        final node = rings + i + 1;
+        final random = math.Random(gardenSeed + node * 7919);
+        leaves.add(
+          PlantLeaf(
+            node: node,
+            bornAt: elapsed,
+            vigor: 1 + (count - 1) * .18,
+            variation: random.nextDouble(),
+            azimuth: random.nextDouble() * .7,
+          ),
+        );
+        // Keep basal foliage and recent growth; old internodes form the canopy.
+        if (leaves.length > 40) leaves.removeAt(8);
+      }
+      rings += count;
       clearSerial++;
     }
-    if (mode == GameMode.timed && rings >= targetRings) {
-      won = true;
-      finished = true;
-      return;
+    if (thirtyRingTime == null && rings >= targetRings) {
+      thirtyRingTime = elapsed;
     }
     _spawn();
   }
@@ -449,6 +493,7 @@ class PuzzleModel {
     activeType = type;
     _rotation = rotation;
     angle = column + activeCenterOffset;
+    _snapPhase = angle - angle.floorToDouble();
     _row = row;
     _progress = 0;
     contactTime = 0;

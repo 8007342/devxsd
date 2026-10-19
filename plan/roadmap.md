@@ -1,37 +1,19 @@
 # Roadmap
 
-- [ ] Playtest the first playable on real phones; tune inertia, lock delay, speed curve and camera proportions from feedback.
-- [ ] Refine botanical variety, pixel density and front/rear readability through subsequent agreed changes.
+- [ ] Playtest the combined quiet HUD and long ambient cycle on real phones.
+- [ ] Refine foliage variety and depth contrast from feedback.
 
-Implemented: 18×42 upward wraparound puzzle, 30-ring Timed and Unlimited modes,
-centered pieces, inclined landing-focused camera, dimensional bricks and pot,
-starting sprout, growing Monstera/pothos, night parallax, touch/keyboard input,
-and top-ten Durable Object API with browser-local fallback.
+Implemented: original 18×42 cylinder with 1.10 uniform zoom, ornate crown,
+rotation-independent snap phase, exact adjacent keyboard movement, exclusive
+tap/turn/send gestures and borderless flashing rotation arrows. Active solids
+share settled-brick faces and paint after all glow. First preview blocks are
+15px, followed by 10px and 9px.
 
-Current change: `upward-ascent-camera` replaces destination-only framing with
-an upward-looking perspective. Start near the base/spawn, follow the active
-piece smoothly, compress distant upper rows, and return immediately on each new
-spawn. Large near-square local cells and the ornate crown remain priorities.
+One growing game continues until blocked spawning; milestone timing is internal
+and shown in results only. One total-rings table displays same-run time, rings
+and Monstera height. The HUD shows absolute Rings and height without a clock.
+Layered sky/terrain parallax and a subdued twelve-minute light cycle add ambience.
 
-The earlier `cylindrical-monstera-game` and `living-chandelier` changes have
-synchronized main specs; do not reapply their deltas when archiving. Their
-implemented features include prompt exact snapping, an ornamental crown,
-age-aware rooted pothos, weathering and sparse garden insects.
-
-Camera rig, upward projection and full-ascent tests are implemented. Phone and
-desktop playthroughs verify every ascent frame, seven repeated hard-launch
-spawns, spinning/tall stacks and reset. Actual spawn, mid-ascent and contact
-images are captured under build/test/. The visible sibling preview uses the
-new camera. The Flutter route uses local score fallback; the
-Worker API was smoke-tested separately.
-
-Validation: flutter analyze, all 55 Flutter tests, release web build and strict
-OpenSpec validation pass. Visible Chromium was reloaded and inspected.
-
-Close-up playtest: keep the upward angle and follow rig, move the eye much nearer
-to enlarge local blocks, and permit sides/rim cropping. Camera tests now require
-at least 35px active cell edges on phones (28px on the short desktop viewport).
-
-Latest framing: activepiece sits across the physical bottom edge with a thin
-crop, and board drawing extends behind controls. Uniform zoom preserves cell
-proportions while the crown stays framed. Full-ascent tests cover the new crop.
+Current change: `quiet-garden-polish` builds on `precise-growing-garden` and
+`restore-original-cylinder`. Earlier deltas are historical; do not reapply them
+over synchronized main specifications.

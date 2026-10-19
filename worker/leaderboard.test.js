@@ -30,3 +30,35 @@ test('unlimited ranks height descending and rejects invalid submissions', async 
   assert.equal((await post(first,score('bad',60,30))).status,400);
   assert.equal((await first.fetch(new Request('https://game/api/leaderboard?mode=other'))).status,400);
 });
+test('one run atomically records milestone and same-run survival values', async () => {
+  const first = board();
+  const run = {mode:'run', view:'timed', name:'RUN', seconds:600, time30:123.4, rings:92, height:101};
+  assert.equal((await post(first,run)).status,200);
+  const get = async mode => (await (await first.fetch(new Request(`https://game/api/leaderboard?mode=${mode}`))).json()).entries;
+  assert.deepEqual(await get('timed'),await get('unlimited'));
+  assert.equal((await get('timed'))[0].time30,123.4);
+  assert.equal((await get('timed'))[0].rings,92);
+  await post(first,{...run,name:'FAST',time30:100,rings:40}); // Invalid initials.
+  assert.equal((await get('timed')).length,1);
+  await post(first,{...run,name:'ABC',time30:110,rings:40,height:500});
+  assert.equal((await get('timed'))[0].name,'ABC');
+  assert.equal((await get('unlimited'))[0].name,'RUN');
+});
+test('incomplete run records only survival and rejects inconsistent milestones', async () => {
+  const first=board();
+  const run={mode:'run',view:'unlimited',name:'NEW',seconds:20,time30:null,rings:3,height:3};
+  assert.equal((await post(first,run)).status,200);
+  const timed=await (await first.fetch(new Request('https://game/api/leaderboard?mode=timed'))).json();
+  assert.deepEqual(timed.entries,[]);
+  for (const patch of [{rings:30},{time30:10},{rings:30,time30:21},{rings:30,time30:-1},{rings:30,time30:Infinity}]) {
+    assert.equal(validateEntry({...run,...patch}),false);
+  }
+});
+test('legacy timed seconds coexist with new milestone times', async () => {
+  const first=board();
+  await post(first,score('OLD',120,30));
+  await post(first,{mode:'run',view:'timed',name:'NEW',seconds:900,time30:100,rings:80,height:80});
+  const result=await (await first.fetch(new Request('https://game/api/leaderboard?mode=timed'))).json();
+  assert.deepEqual(result.entries.map(e=>e.name),['NEW','OLD']);
+  assert.deepEqual(result.entries.map(e=>e.time30),[100,120]);
+});

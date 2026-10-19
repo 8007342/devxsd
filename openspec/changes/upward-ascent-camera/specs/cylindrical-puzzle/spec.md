@@ -17,6 +17,11 @@ Portrait controls SHALL occupy the bottom 20 percent as translucent icons over t
 - **WHEN** an instant launch or natural lock spawns the next piece
 - **THEN** the base view returns immediately so the player can act without waiting through a long camera sweep
 
+
+#### Scenario: Stack fills the board
+- **WHEN** occupied rows extend toward the bottom
+- **THEN** the view subtly pulls outward while the entire inclined board remains visible
+
 ### Requirement: Square dimensional cells
 Front-meridian cells near the active piece SHALL remain approximately square and large. Distant cells SHALL shrink and foreshorten with perspective; rear cells SHALL stay smaller and dimmer. Active and settled pieces SHALL share solid outward face geometry and lighting. The logical board SHALL remain 18 wrapping columns by 42 rows.
 
@@ -32,12 +37,22 @@ The crown and base SHALL use the same upward-view perspective. Their apparent si
 - **WHEN** a run starts
 - **THEN** the nearby base appears larger than the distant crown, with both projected by the same camera
 
+
+#### Scenario: Compare cylinder ends while turning
+- **WHEN** the cylinder rotates at any board position
+- **THEN** crown and base retain matching shallow projected profiles and remain connected to their corresponding grid rows
+
 ### Requirement: Solid brick face orientation
 Bricks SHALL remain solid through the upward view, turning and ascent. Front blocks SHALL expose their outward radial face, rear blocks their inward face, and visible bottom or side surfaces SHALL use outward normals and consistent lighting. Active halos SHALL remain outside opaque solid faces.
 
 #### Scenario: Inspect bricks from below
 - **WHEN** the camera looks upward from below the active piece
 - **THEN** exposed undersides and tangent faces read as filled solid volume rather than hollow boxes
+
+
+#### Scenario: Turn bricks across the front and rear
+- **WHEN** settled or active bricks rotate around either side of the cylinder
+- **THEN** their visible faces and edge shading remain consistent with solid volume
 
 ### Requirement: Perspective botanical presentation
 The cylinder SHALL remain transparent between blocks, revealing the Monstera and rear pieces. Front blocks SHALL be larger and brighter; rear blocks smaller, dimmer and curved. Visible brick surfaces SHALL follow the camera direction. The ornate crown, dimensional base pot and plants SHALL retain coherent world placement as the camera ascends. Halos SHALL remain legible in pixel art.
